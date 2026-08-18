@@ -1,25 +1,35 @@
 import { useState } from 'react';
-import { Home, CreditCard, Receipt, Download } from 'lucide-react';
+import { Home, CreditCard, Mail, Receipt, LogOut } from 'lucide-react';
+import { AuthProvider, useAuth } from './lib/auth';
+import AuthScreen from './components/AuthScreen';
 import DashboardTab from './components/DashboardTab';
 import PaymentTab from './components/PaymentTab';
+import BuzonTab from './components/BuzonTab';
 import HistoryTab from './components/HistoryTab';
 
-type Tab = 'inicio' | 'pago' | 'historial';
+type Tab = 'inicio' | 'pago' | 'buzon' | 'historial';
 
-function App() {
+function AppContent() {
+  const { user, loading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('inicio');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [selectedItemType, setSelectedItemType] = useState<'debt' | 'arancel' | null>(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(true);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [selectedItemType, setSelectedItemType] = useState<'mensualidad' | 'arancel' | null>(null);
 
-  const handlePayDebt = (debtId: string) => {
-    setSelectedItemId(debtId);
-    setSelectedItemType('debt');
+  const handlePayMensualidad = (id: string) => {
+    handlePayMensualidades([id]);
+  };
+
+  const handlePayMensualidades = (ids: string[]) => {
+    setSelectedItemId(ids[0] ?? null);
+    setSelectedItemIds(ids);
+    setSelectedItemType('mensualidad');
     setActiveTab('pago');
   };
 
-  const handlePayArancel = (arancelId: string) => {
-    setSelectedItemId(arancelId);
+  const handlePayArancel = (id: string) => {
+    setSelectedItemId(id);
+    setSelectedItemIds([]);
     setSelectedItemType('arancel');
     setActiveTab('pago');
   };
@@ -30,17 +40,35 @@ function App() {
     setActiveTab('inicio');
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-200 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#0A2463] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-200 flex items-center justify-center p-0 sm:p-6">
+        <div className="relative w-full sm:w-[400px] h-screen sm:h-[850px] bg-gray-100 sm:rounded-[2.5rem] sm:border-[10px] sm:border-gray-900 sm:shadow-2xl overflow-hidden flex flex-col">
+          <div className="hidden sm:block absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-gray-900 rounded-b-2xl z-50" />
+          <AuthScreen />
+        </div>
+      </div>
+    );
+  }
+
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: 'inicio', label: 'Inicio', icon: Home },
     { id: 'pago', label: 'Pago', icon: CreditCard },
+    { id: 'buzon', label: 'Buzon', icon: Mail },
     { id: 'historial', label: 'Historial', icon: Receipt },
   ];
 
   return (
     <div className="min-h-screen bg-gray-200 flex items-center justify-center p-0 sm:p-6">
-      {/* Phone Frame */}
       <div className="relative w-full sm:w-[400px] h-screen sm:h-[850px] bg-gray-100 sm:rounded-[2.5rem] sm:border-[10px] sm:border-gray-900 sm:shadow-2xl overflow-hidden flex flex-col">
-        {/* Notch (web only) */}
         <div className="hidden sm:block absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-gray-900 rounded-b-2xl z-50" />
 
         {/* Status bar */}
@@ -52,11 +80,6 @@ function App() {
               <rect x="3" y="4" width="2" height="6" rx="0.5" />
               <rect x="6" y="2" width="2" height="8" rx="0.5" />
               <rect x="9" y="0" width="2" height="10" rx="0.5" />
-            </svg>
-            <svg width="14" height="10" viewBox="0 0 14 10" fill="currentColor">
-              <path d="M7 0C4.5 0 2.2 1 .5 2.5l1 1C3 2.3 5 1.5 7 1.5s4 .8 5.5 2l1-1C11.8 1 9.5 0 7 0z" />
-              <path d="M7 3C5.3 3 3.7 3.7 2.5 4.7l1 1C4.4 5 5.7 4.5 7 4.5s2.6.5 3.5 1.2l1-1C10.3 3.7 8.7 3 7 3z" />
-              <circle cx="7" cy="8" r="1.5" />
             </svg>
             <div className="flex items-center">
               <div className="w-6 h-3 border border-white rounded-sm relative">
@@ -78,45 +101,29 @@ function App() {
               <p className="text-gray-400 text-xs leading-tight">Universidad Boliviana de Informatica</p>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-            <span className="text-gray-500 font-bold text-xs">CE</span>
-          </div>
+          <button
+            onClick={signOut}
+            className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+            title="Cerrar sesion"
+          >
+            <LogOut size={14} className="text-gray-500" />
+          </button>
         </div>
-
-        {/* Install Banner */}
-        {showInstallBanner && (
-          <div className="bg-gradient-to-r from-[#0A2463] to-[#1E4DB7] text-white px-4 py-2.5 flex items-center gap-3 z-30">
-            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Download size={16} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-xs font-semibold">Instalar App en tu celular</p>
-              <p className="text-blue-200 text-xs truncate">Para acceso rapido desde tu pantalla de inicio</p>
-            </div>
-            <button className="bg-white text-[#0A2463] text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-transform">
-              Instalar
-            </button>
-            <button
-              onClick={() => setShowInstallBanner(false)}
-              className="text-white/60 hover:text-white flex-shrink-0 text-lg leading-none"
-            >
-              ×
-            </button>
-          </div>
-        )}
 
         {/* Content area */}
         <div className="flex-1 overflow-y-auto bg-gray-50">
           {activeTab === 'inicio' && (
-            <DashboardTab onPayDebt={handlePayDebt} onPayArancel={handlePayArancel} />
+            <DashboardTab onPayMensualidad={handlePayMensualidad} onPayMensualidades={handlePayMensualidades} onPayArancel={handlePayArancel} />
           )}
           {activeTab === 'pago' && (
             <PaymentTab
               selectedItemId={selectedItemId}
               selectedItemType={selectedItemType}
+              selectedItemIds={selectedItemIds}
               onBack={handleBackFromPayment}
             />
           )}
+          {activeTab === 'buzon' && <BuzonTab />}
           {activeTab === 'historial' && <HistoryTab />}
         </div>
 
@@ -129,29 +136,15 @@ function App() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex flex-col items-center gap-1 px-6 py-1 transition-all"
+                className="flex flex-col items-center gap-1 px-4 py-1 transition-all"
               >
-                <div
-                  className={`transition-all ${
-                    isActive ? 'scale-110' : 'scale-100'
-                  }`}
-                >
-                  <Icon
-                    size={22}
-                    className={isActive ? 'text-[#0A2463]' : 'text-gray-400'}
-                    strokeWidth={isActive ? 2.5 : 2}
-                  />
+                <div className={`transition-all ${isActive ? 'scale-110' : 'scale-100'}`}>
+                  <Icon size={20} className={isActive ? 'text-[#0A2463]' : 'text-gray-400'} strokeWidth={isActive ? 2.5 : 2} />
                 </div>
-                <span
-                  className={`text-xs font-semibold transition-colors ${
-                    isActive ? 'text-[#0A2463]' : 'text-gray-400'
-                  }`}
-                >
+                <span className={`text-xs font-semibold transition-colors ${isActive ? 'text-[#0A2463]' : 'text-gray-400'}`}>
                   {tab.label}
                 </span>
-                {isActive && (
-                  <div className="w-1 h-1 bg-[#0A2463] rounded-full" />
-                )}
+                {isActive && <div className="w-1 h-1 bg-[#0A2463] rounded-full" />}
               </button>
             );
           })}
@@ -161,4 +154,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
