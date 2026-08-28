@@ -42,7 +42,7 @@ export default function AuthScreen() {
         </h2>
         <p className="text-gray-400 text-xs mb-5">
           {mode === 'login'
-            ? 'Ingresa con tu correo institucional'
+            ? 'Ingresa con tu correo'
             : 'Registra tu correo institucional para acceder'}
         </p>
 

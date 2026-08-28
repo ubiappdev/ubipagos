@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import type { Alumno, Carrera, Curso, TipoBeca } from './supabase';
+import type { Alumno } from './supabase';
 
 type AuthContextType = {
   session: Session | null;
   user: User | null;
-  alumno: (Alumno & { carrera?: Carrera; curso?: Curso; tipo_beca?: TipoBeca }) | null;
+  alumno: Alumno | null;
   loading: boolean;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
@@ -17,52 +17,76 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [alumno, setAlumno] = useState<(Alumno & { carrera?: Carrera; curso?: Curso; tipo_beca?: TipoBeca }) | null>(null);
+  const [alumno, setAlumno] = useState<Alumno | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchAlumno = async (userId: string) => {
-    const { data: perfil } = await supabase
-      .from('perfiles')
-      .select('id')
-      .eq('auth_id', userId)
-      .maybeSingle();
+    try {
+      const { data: perfil, error: perfilError } = await supabase
+        .from('perfiles')
+        .select('id')
+        .eq('auth_id', userId)
+        .maybeSingle();
 
-    if (!perfil) {
+      if (perfilError || !perfil) {
+        setAlumno(null);
+        return;
+      }
+
+      // Consulta completamente limpia sin relaciones a tipos_beca
+      const { data, error: alumnoError } = await supabase
+        .from('alumnos')
+        .select('*')
+        .eq('perfil_id', perfil.id)
+        .maybeSingle();
+
+      if (alumnoError) {
+        console.error('Error al obtener los datos del alumno:', alumnoError.message);
+        setAlumno(null);
+        return;
+      }
+
+      setAlumno(data as Alumno | null);
+    } catch (err) {
+      console.error('Excepción inesperada al buscar el perfil del alumno:', err);
       setAlumno(null);
-      return;
     }
-
-    const { data } = await supabase
-      .from('alumnos')
-      .select('*, carrera:carreras(*), curso:cursos(*), tipo_beca:tipos_beca(*)')
-      .eq('perfil_id', perfil.id)
-      .maybeSingle();
-
-    setAlumno(data as (Alumno & { carrera?: Carrera; curso?: Curso; tipo_beca?: TipoBeca }) | null);
   };
 
   useEffect(() => {
+    let mounted = true;
+
+    // Obtener sesión inicial
     supabase.auth.getSession().then(({ data: { session: s } }) => {
+      if (!mounted) return;
       setSession(s);
       if (s?.user) {
-        fetchAlumno(s.user.id).finally(() => setLoading(false));
+        fetchAlumno(s.user.id).finally(() => {
+          if (mounted) setLoading(false);
+        });
       } else {
         setLoading(false);
       }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+    // Escuchar cambios de autenticación
+    const { data: { subscription: listener } } = supabase.auth.onAuthStateChange((_event, s) => {
+      if (!mounted) return;
       setSession(s);
       if (s?.user) {
-        (async () => {
-          await fetchAlumno(s.user.id);
-        })();
+        fetchAlumno(s.user.id).finally(() => {
+          if (mounted) setLoading(false);
+        });
       } else {
         setAlumno(null);
+        setLoading(false);
       }
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      listener.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string) => {
@@ -70,10 +94,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) return { error: error.message };
 
     if (data.user) {
-      await supabase.rpc('vincular_perfil_auth', {
+      const { error: rpcError } = await supabase.rpc('vincular_perfil_auth', {
         p_correo: email,
         p_auth_id: data.user.id,
       });
+
+      if (rpcError) {
+        console.error('Error al vincular el perfil:', rpcError.message);
+        return { error: 'Cuenta creada, pero hubo un problema al vincular el perfil estudiantil.' };
+      }
     }
 
     return { error: null };

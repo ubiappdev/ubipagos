@@ -26,7 +26,7 @@ const canalLabels: Record<string, string> = {
   TRANSFERENCIA: 'Transferencia Interbancaria',
 };
 
-type FilterType = 'todos' | 'APROBADO' | 'PENDIENTE' | 'RECHAZADO';
+type FilterType = 'todos' | 'mensualidad' | 'arancel';
 
 export default function HistoryTab() {
   const { alumno } = useAuth();
@@ -57,16 +57,22 @@ export default function HistoryTab() {
     );
   }
 
-  const filtered = filter === 'todos' ? pagos : pagos.filter((p) => p.estado_conciliacion === filter);
-  const totalAprobado = pagos
-    .filter((p) => p.estado_conciliacion === 'APROBADO')
-    .reduce((s, p) => s + Number(p.monto_pagado), 0);
-
   const getConcept = (p: Pago) => {
     if (p.mensualidad_id) return 'Mensualidad';
     if (p.arancel_id) return 'Arancel';
     return 'Pago';
   };
+
+  const filtered = pagos.filter((p) => {
+    if (filter === 'todos') return true;
+    if (filter === 'mensualidad') return !!p.mensualidad_id;
+    if (filter === 'arancel') return !!p.arancel_id;
+    return true;
+  });
+
+  const totalAprobado = pagos
+    .filter((p) => p.estado_conciliacion === 'APROBADO')
+    .reduce((s, p) => s + Number(p.monto_pagado), 0);
 
   return (
     <div className="flex flex-col gap-4 pb-4">
@@ -94,9 +100,8 @@ export default function HistoryTab() {
       <div className="mx-4 flex gap-2 overflow-x-auto pb-1">
         {([
           { key: 'todos', label: 'Todos' },
-          { key: 'APROBADO', label: 'Aprobados' },
-          { key: 'PENDIENTE', label: 'Pendientes' },
-          { key: 'RECHAZADO', label: 'Rechazados' },
+          { key: 'mensualidad', label: 'Mensualidades' },
+          { key: 'arancel', label: 'Aranceles' },
         ] as { key: FilterType; label: string }[]).map((f) => (
           <button
             key={f.key}
@@ -197,7 +202,7 @@ export default function HistoryTab() {
               </div>
               <div className="flex justify-between py-1.5">
                 <span className="text-gray-400 text-xs">Carrera:</span>
-                <span className="text-gray-700 text-xs">{alumno?.carrera?.carrera}</span>
+                <span className="text-gray-700 text-xs">{alumno?.carrera_id}</span>
               </div>
 
               <div className="border-t border-dashed border-gray-200 pt-3 mt-1">

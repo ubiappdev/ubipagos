@@ -325,33 +325,16 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
               <p className="text-gray-500 text-xs mb-4 text-center">Escanea este codigo QR con tu app bancaria para transferir</p>
               <div className="relative p-3 border-2 border-[#0A2463] rounded-2xl bg-white shadow-inner">
                 <img
-                  src={supabase.storage.from('configuracion-pagos').getPublicUrl('qr-pago.jpeg').data.publicUrl}
+                  src="https://ahjgfwpqugokzksfoufu.supabase.co/storage/v1/object/public/configuracion-pagos/qr_ubi.JPG"
                   alt="Codigo QR para realizar el pago"
                   onError={(event) => { event.currentTarget.src = '/storage/WhatsApp_Image_2026-08-13_at_16.23.30.jpeg'; }}
                   className="w-[200px] h-[200px] object-contain"
                 />
-                <div className="hidden">
-                  <rect width="200" height="200" fill="white" />
-                  <rect x="10" y="10" width="60" height="60" fill="#0A2463" rx="4" />
-                  <rect x="18" y="18" width="44" height="44" fill="white" rx="2" />
-                  <rect x="26" y="26" width="28" height="28" fill="#0A2463" rx="2" />
-                  <rect x="130" y="10" width="60" height="60" fill="#0A2463" rx="4" />
-                  <rect x="138" y="18" width="44" height="44" fill="white" rx="2" />
-                  <rect x="146" y="26" width="28" height="28" fill="#0A2463" rx="2" />
-                  <rect x="10" y="130" width="60" height="60" fill="#0A2463" rx="4" />
-                  <rect x="18" y="138" width="44" height="44" fill="white" rx="2" />
-                  <rect x="26" y="146" width="28" height="28" fill="#0A2463" rx="2" />
-                  {[80,90,100,110,120].map(x => [10,20,30,40,50,60].map(y => Math.sin(x * y * 0.03) > 0 && (<rect key={`${x}-${y}`} x={x} y={y} width="8" height="8" fill="#0A2463" />)))}
-                  {[10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180].map(x => [80,90,100,110,120,130,140,150,160,170,180].map(y => Math.cos(x * 0.7 + y * 0.5) > 0.1 && !(x < 75 && y > 125) && (<rect key={`d-${x}-${y}`} x={x} y={y} width="8" height="8" fill="#0A2463" />)))}
-                  <rect x="85" y="85" width="30" height="30" fill="white" rx="4" />
-                  <rect x="88" y="88" width="24" height="24" fill="#0A2463" rx="3" />
-                  <text x="100" y="104" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">UBI</text>
-                </div>
               </div>
               <div className="mt-5 w-full bg-gray-50 rounded-xl p-3 text-center">
                 <p className="text-gray-400 text-xs">Monto a transferir</p>
                 <p className="text-[#0A2463] font-extrabold text-2xl mt-1">Bs {item.amount.toLocaleString('es-BO')}</p>
-                <p className="text-gray-500 text-xs mt-2 font-semibold">Godoy Mendoza Jose Antonio</p>
+                <p className="text-gray-500 text-xs mt-2 font-semibold">UBI - RECAUDACIONES</p>
                 <p className="text-gray-400 text-xs mt-1">Cuenta: 201-50504007-3-30 · BCP</p>
               </div>
               <div className="mt-4 flex items-center gap-2 text-amber-600 bg-amber-50 rounded-xl px-4 py-3 w-full">
@@ -558,7 +541,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
               </div>
               <div className="flex justify-between pt-2.5">
                 <span className="text-gray-400 text-sm">Estado</span>
-                <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full">Por confirmar</span>
+                <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full">Enviado</span>
               </div>
             </div>
             <div className="w-full bg-blue-50 rounded-2xl p-4 flex gap-3">

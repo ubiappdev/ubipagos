@@ -93,9 +93,11 @@ function AppContent() {
         {/* App Header */}
         <div className="bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between z-30">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 bg-[#0A2463] rounded-xl flex items-center justify-center">
-              <span className="text-white font-extrabold text-sm">UBI</span>
-            </div>
+            <img 
+              src="https://ahjgfwpqugokzksfoufu.supabase.co/storage/v1/object/public/configuracion-pagos/ubi.jpeg" 
+              alt="Logo UBI" 
+              className="w-9 h-9 object-contain flex-shrink-0" 
+            />
             <div>
               <p className="text-[#0A2463] font-bold text-sm leading-tight">Portal Financiero</p>
               <p className="text-gray-400 text-xs leading-tight">Universidad Boliviana de Informatica</p>

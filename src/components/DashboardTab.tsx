@@ -16,10 +16,19 @@ import {
   CheckSquare,
   Square,
   Layers,
+  FileCheck,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import type { Mensualidad, Arancel } from '../lib/supabase';
+
+interface Tramite {
+  id: number;
+  categoria: string | null;
+  tramite: string;
+  costo: number;
+  activo: boolean;
+}
 
 const iconMap: Record<string, React.ElementType> = {
   BookOpen,
@@ -34,64 +43,111 @@ interface DashboardTabProps {
   onPayMensualidad: (id: string) => void;
   onPayMensualidades: (ids: string[]) => void;
   onPayArancel: (id: string) => void;
+  onPayTramite?: (tramiteId: number) => void;
 }
 
-export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onPayArancel }: DashboardTabProps) {
+export default function DashboardTab({
+  onPayMensualidad,
+  onPayMensualidades,
+  onPayArancel,
+  onPayTramite,
+}: DashboardTabProps) {
   const { alumno } = useAuth();
   const [mensualidades, setMensualidades] = useState<Mensualidad[]>([]);
   const [aranceles, setAranceles] = useState<Arancel[]>([]);
+  const [tramites, setTramites] = useState<Tramite[]>([]);
   const [pagosPorConfirmar, setPagosPorConfirmar] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
-    if (!alumno) return;
+    if (!alumno?.id) {
+      console.log('Esperando información del alumno en el contexto...');
+      return;
+    }
+
     setLoading(true);
-    const [mensRes, aranRes, pagosRes] = await Promise.all([
-      supabase
+    console.log('Cargando datos für el alumno ID:', alumno.id);
+
+    try {
+      // 1. Cargar mensualidades del alumno
+      const { data: mensData, error: mensError } = await supabase
         .from('alumnos_mensualidades')
         .select('*')
         .eq('alumno_id', alumno.id)
-        .order('nro_cuota', { ascending: true }),
-      supabase
+        .order('nro_cuota', { ascending: true });
+
+      if (mensError) {
+        console.error('Error al cargar mensualidades:', mensError.message);
+      } else {
+        setMensualidades(mensData ?? []);
+      }
+
+      // 2. Cargar aranceles activos
+      const { data: aranData, error: aranError } = await supabase
         .from('aranceles_conceptos')
         .select('*')
         .eq('activo', true)
-        .order('categoria', { ascending: true }),
-      supabase
+        .order('categoria', { ascending: true });
+
+      if (aranError) {
+        console.error('Error al cargar aranceles:', aranError.message);
+      } else {
+        const sortedAranceles = [...(aranData ?? [])].sort((a, b) => {
+          if (a.categoria === 'MATRICULA' && b.categoria !== 'MATRICULA') return -1;
+          if (a.categoria !== 'MATRICULA' && b.categoria === 'MATRICULA') return 1;
+          return (a.categoria || '').localeCompare(b.categoria || '');
+        });
+        setAranceles(sortedAranceles);
+      }
+
+      // 3. Cargar pagos pendientes de confirmación
+      const { data: pagosData, error: pagosError } = await supabase
         .from('alumnos_pagos')
         .select('mensualidad_id, arancel_id, estado_conciliacion')
         .eq('alumno_id', alumno.id)
-        .eq('estado_conciliacion', 'PENDIENTE'),
-    ]);
-    setMensualidades(mensRes.data ?? []);
-    const pending = new Set<string>();
-    (pagosRes.data ?? []).forEach((pago) => {
-      if (pago.mensualidad_id) pending.add(`mensualidad:${pago.mensualidad_id}`);
-      if (pago.arancel_id) pending.add(`arancel:${pago.arancel_id}`);
-    });
-    setPagosPorConfirmar(pending);
-    const sortedAranceles = [...(aranRes.data ?? [])].sort((a, b) => {
-      if (a.categoria === 'MATRICULA' && b.categoria !== 'MATRICULA') return -1;
-      if (a.categoria !== 'MATRICULA' && b.categoria === 'MATRICULA') return 1;
-      return a.categoria.localeCompare(b.categoria);
-    });
-    setAranceles(sortedAranceles);
-    setLoading(false);
-  }, [alumno]);
+        .eq('estado_conciliacion', 'PENDIENTE');
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+      if (!pagosError && pagosData) {
+        const pending = new Set<string>();
+        pagosData.forEach((pago) => {
+          if (pago.mensualidad_id) pending.add(`mensualidad:${pago.mensualidad_id}`);
+          if (pago.arancel_id) pending.add(`arancel:${pago.arancel_id}`);
+        });
+        setPagosPorConfirmar(pending);
+      }
 
-  if (loading) {
+      // 4. Cargar trámites institucionales
+      const { data: tramData } = await supabase
+        .from('tramites')
+        .select('*')
+        .eq('activo', true)
+        .order('tramite', { ascending: true });
+
+      setTramites(tramData ?? []);
+
+    } catch (err) {
+      console.error('Error general en fetchData:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [alumno?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  if (loading || !alumno) {
     return (
-      <div className="flex items-center justify-center h-full py-20">
-        <Loader2 size={28} className="text-[#0A2463] animate-spin" />
+      <div className="flex flex-col items-center justify-center h-full py-20 gap-3">
+        <Loader2 size={32} className="text-[#0A2463] animate-spin" />
+        <p className="text-gray-400 text-xs font-medium">Cargando información del estudiante...</p>
       </div>
     );
   }
 
   const pendientes = mensualidades.filter((m) => m.estado === 'PENDIENTE');
-  const totalDeuda = pendientes.reduce((s, m) => s + Number(m.monto_con_descuento), 0);
+  const totalDeuda = pendientes.reduce((s, m) => s + Number(m.monto_con_descuento || 0), 0);
   const alDia = pendientes.length === 0;
 
   const toggleSelect = (id: string) => {
@@ -105,20 +161,35 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
   };
 
   const selectedMensualidades = pendientes.filter((m) => selectedIds.has(m.id));
-  const selectedTotal = selectedMensualidades.reduce((s, m) => s + Number(m.monto_con_descuento), 0);
-  const allSelected = pendientes.length > 0 && pendientes.every((m) => selectedIds.has(m.id) || pagosPorConfirmar.has(`mensualidad:${m.id}`));
+  const selectedTotal = selectedMensualidades.reduce((s, m) => s + Number(m.monto_con_descuento || 0), 0);
+  const allSelected =
+    pendientes.length > 0 &&
+    pendientes.every(
+      (m) => selectedIds.has(m.id) || pagosPorConfirmar.has(`mensualidad:${m.id}`)
+    );
 
   const toggleSelectAll = () => {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(pendientes.filter((m) => !pagosPorConfirmar.has(`mensualidad:${m.id}`)).map((m) => m.id)));
+      setSelectedIds(
+        new Set(
+          pendientes
+            .filter((m) => !pagosPorConfirmar.has(`mensualidad:${m.id}`))
+            .map((m) => m.id)
+        )
+      );
     }
   };
 
-  const fullName = alumno ? `${alumno.nombres} ${alumno.apellidos}` : '';
-  const carreraName = alumno?.carrera?.carrera ?? '';
-  const gestion = `Gestion ${new Date().getFullYear()}`;
+  const fullName = `${alumno.nombres || ''} ${alumno.apellidos || ''}`.trim() || 'Estudiante';
+  
+  // Tratamiento seguro de campos de texto plano (carrera, curso y turno)
+  const carreraName = alumno.carrera_id || '';
+  const cursoName = typeof alumno.curso === 'string' ? alumno.curso : (alumno.curso as any)?.nombre_curso || '';
+  const turnoName = typeof alumno.turno === 'string' ? alumno.turno : '';
+
+  const gestion = `Gestión ${new Date().getFullYear()}`;
 
   const getDaysLeft = (fecha: string | null) => {
     if (!fecha) return 0;
@@ -129,7 +200,7 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
 
   return (
     <div className="flex flex-col gap-4 pb-4">
-      {/* Student Card */}
+      {/* Credencial / Tarjeta del Estudiante */}
       <div className="mx-4 mt-4 bg-gradient-to-br from-[#0A2463] to-[#1E4DB7] rounded-2xl p-5 shadow-lg">
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 border-2 border-white/30">
@@ -138,15 +209,29 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
           <div className="flex-1 min-w-0">
             <p className="text-white/70 text-xs font-medium uppercase tracking-wide">Estudiante</p>
             <h2 className="text-white font-bold text-base leading-tight mt-0.5">{fullName}</h2>
-            <p className="text-blue-200 text-xs mt-1">{carreraName}</p>
+            {carreraName && <p className="text-blue-200 text-xs mt-1">{carreraName}</p>}
+            
+            {/* Detalles adicionales (Curso / Turno) */}
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              {cursoName && (
+                <span className="text-white/80 text-xs bg-white/10 px-2 py-0.5 rounded">
+                  Curso: {cursoName}
+                </span>
+              )}
+              {turnoName && (
+                <span className="text-white/80 text-xs bg-white/10 px-2 py-0.5 rounded">
+                  Turno: {turnoName}
+                </span>
+              )}
+            </div>
+
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <span className="bg-white/15 text-white/90 text-xs px-2.5 py-1 rounded-full font-mono">{gestion}</span>
               <span className="bg-white/15 text-white/90 text-xs px-2.5 py-1 rounded-full font-mono">
-                CI: {alumno?.ci} {alumno?.expedido}
+                {gestion}
               </span>
-              {alumno?.becado && (
-                <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-semibold">
-                  Becado {alumno?.tipo_beca?.porcentaje_descuento}% desc
+              {alumno?.ci && (
+                <span className="bg-white/15 text-white/90 text-xs px-2.5 py-1 rounded-full font-mono">
+                  CI: {alumno.ci}
                 </span>
               )}
             </div>
@@ -160,7 +245,7 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
               {alDia ? (
                 <>
                   <CheckCircle2 size={15} className="text-emerald-400" />
-                  <span className="text-emerald-400 font-semibold text-sm">Al dia</span>
+                  <span className="text-emerald-400 font-semibold text-sm">Al día</span>
                 </>
               ) : (
                 <>
@@ -177,15 +262,17 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
         </div>
       </div>
 
-      {/* Active Debts */}
+      {/* Mensualidades Pendientes */}
       <div className="mx-4">
-        <h3 className="text-[#0A2463] font-bold text-sm mb-3 uppercase tracking-wide">Mensualidades Pendientes</h3>
+        <h3 className="text-[#0A2463] font-bold text-sm mb-3 uppercase tracking-wide">
+          Mensualidades Pendientes
+        </h3>
         {pendientes.length === 0 ? (
           <div className="bg-emerald-50 rounded-2xl p-5 flex items-center gap-3">
             <ShieldCheck size={24} className="text-emerald-500 flex-shrink-0" />
             <div>
               <p className="text-emerald-700 font-semibold text-sm">No tienes mensualidades pendientes</p>
-              <p className="text-emerald-600 text-xs mt-0.5">Todas tus mensualidades estan al dia</p>
+              <p className="text-emerald-600 text-xs mt-0.5">Todas tus mensualidades están al día</p>
             </div>
           </div>
         ) : (
@@ -196,7 +283,7 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
                 className="flex items-center gap-2 text-[#0A2463] text-xs font-semibold hover:text-[#1E4DB7] transition-colors"
               >
                 {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                {allSelected ? 'Quitar seleccion' : 'Seleccionar todas'}
+                {allSelected ? 'Quitar selección' : 'Seleccionar todas'}
               </button>
               {selectedIds.size > 0 && (
                 <span className="text-gray-400 text-xs">{selectedIds.size} seleccionada(s)</span>
@@ -213,7 +300,11 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
                   <div
                     key={debt.id}
                     className={`bg-white rounded-2xl p-4 shadow-sm border-l-4 ${
-                      isOverdue ? 'border-red-500' : isUrgent ? 'border-amber-400' : 'border-blue-400'
+                      isOverdue
+                        ? 'border-red-500'
+                        : isUrgent
+                        ? 'border-amber-400'
+                        : 'border-blue-400'
                     } ${isSelected ? 'ring-2 ring-[#0A2463]/30' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -261,8 +352,8 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
                               }`}
                             >
                               {isOverdue
-                                ? `Vencio hace ${Math.abs(daysLeft)} dias`
-                                : `Vence en ${daysLeft} dias`}
+                                ? `Venció hace ${Math.abs(daysLeft)} días`
+                                : `Vence en ${daysLeft} días`}
                             </span>
                           </div>
                           {debt.fecha_vencimiento && (
@@ -293,7 +384,9 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
                     <Layers size={18} className="text-[#0A2463]" />
                     <span className="text-gray-700 font-semibold text-sm">Pago masivo</span>
                   </div>
-                  <span className="text-[#0A2463] font-extrabold text-lg">Bs {selectedTotal.toLocaleString('es-BO')}</span>
+                  <span className="text-[#0A2463] font-extrabold text-lg">
+                    Bs {selectedTotal.toLocaleString('es-BO')}
+                  </span>
                 </div>
                 <button
                   onClick={() => onPayMensualidades(Array.from(selectedIds))}
@@ -309,10 +402,12 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
 
       {/* Aranceles */}
       <div className="mx-4">
-        <h3 className="text-[#0A2463] font-bold text-sm mb-3 uppercase tracking-wide">Aranceles Disponibles</h3>
+        <h3 className="text-[#0A2463] font-bold text-sm mb-3 uppercase tracking-wide">
+          Aranceles Disponibles
+        </h3>
         <div className="grid grid-cols-2 gap-3">
           {aranceles.map((arancel) => {
-            const Icon = iconMap[arancel.categoria] ?? FileText;
+            const Icon = iconMap[arancel.categoria || ''] ?? FileText;
             return (
               <button
                 key={arancel.id}
@@ -330,7 +425,7 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
                     <span className="text-amber-600 font-bold text-xs">Por confirmar</span>
                   ) : (
                     <span className="text-[#0A2463] font-bold text-sm">
-                      Bs {Number(arancel.monto).toLocaleString('es-BO')}
+                      Bs {Number(arancel.monto || 0).toLocaleString('es-BO')}
                     </span>
                   )}
                   <ChevronRight size={14} className="text-gray-300 group-hover:text-[#0A2463] transition-colors" />
@@ -340,6 +435,46 @@ export default function DashboardTab({ onPayMensualidad, onPayMensualidades, onP
           })}
         </div>
       </div>
+
+      {/* Trámites Institucionales */}
+      {tramites.length > 0 && (
+        <div className="mx-4">
+          <h3 className="text-[#0A2463] font-bold text-sm mb-3 uppercase tracking-wide">
+            Trámites y Costos
+          </h3>
+          <div className="grid grid-cols-1 gap-2.5">
+            {tramites.map((tramite) => (
+              <div
+                key={tramite.id}
+                className="bg-white rounded-xl p-3.5 shadow-sm flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center text-[#0A2463] flex-shrink-0">
+                    <FileCheck size={18} />
+                  </div>
+                  <div>
+                    <p className="text-gray-800 font-medium text-xs leading-snug">{tramite.tramite}</p>
+                    <p className="text-gray-400 text-[10px] mt-0.5">Costo institucional</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[#0A2463] font-bold text-xs whitespace-nowrap">
+                    Bs {Number(tramite.costo || 0).toLocaleString('es-BO')}
+                  </span>
+                  {onPayTramite && (
+                    <button
+                      onClick={() => onPayTramite(tramite.id)}
+                      className="bg-[#0A2463] text-white text-[11px] font-semibold px-2.5 py-1.5 rounded-lg hover:bg-[#1E4DB7] transition-colors"
+                    >
+                      Solicitar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,48 +1,52 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+// 🛡️ TRUCO PARA WEBCONTAINERS: Parchear navigator.locks para evitar el error de bloqueo
+if (typeof window !== 'undefined' && window.navigator && window.navigator.locks) {
+  try {
+    const originalRequest = window.navigator.locks.request;
+    window.navigator.locks.request = async (name: string, ...args: any[]) => {
+      const callback = args.length > 1 ? args[1] : args[0];
+      if (typeof callback === 'function') {
+        return await callback({ name, mode: 'exclusive' });
+      }
+      return originalRequest ? originalRequest.apply(window.navigator.locks, args as any) : undefined;
+    };
+  } catch (e) {
+    console.warn('No se pudo parchear navigator.locks:', e);
+  }
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
-  flowType: 'pkce',
+    detectSessionInUrl: false,
+    flowType: 'pkce',
   },
 });
 
+// --- DEFINICIONES DE TIPOS ---
+
 export type Alumno = {
   id: string;
+  perfil_id?: string;
   numero_registro: number;
   ci: string;
   expedido: string;
   nombres: string;
   apellidos: string;
-  carrera_id: string;
-  curso_id: string;
-  turno_id: string;
+  carrera: string | null;       // <--- Campo de texto plano
+  curso: string | null;         // <--- Campo de texto plano
+  turno: string | null;         // <--- Campo de texto plano
   correo_electronico: string | null;
   telefono: string | null;
   estado_financiero: string | null;
   estado: string | null;
   becado: boolean;
   tipo_beca_id: string | null;
-};
-
-export type Carrera = {
-  id: string;
-  codigo: string;
-  carrera: string;
-  nivel: string;
-  anos: number;
-};
-
-export type Curso = {
-  id: string;
-  codigo_curso: string;
-  nombre_curso: string;
-  orden: number;
 };
 
 export type TipoBeca = {
