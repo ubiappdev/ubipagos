@@ -1,24 +1,29 @@
 import { useState } from 'react';
-import { GraduationCap, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Mail, Phone, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState(''); // Puede ser correo o celular
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Detectar si el usuario ingresó un número de teléfono o un correo
+  const isPhone = /^[0-9+\s-]{7,15}$/.test(identifier.trim());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
+    const loginIdentifier = isPhone ? `${identifier.trim()}@sms.ubi.edu.bo` : identifier.trim();
+
     const { error: err } = mode === 'login'
-      ? await signIn(email, password)
-      : await signUp(email, password);
+      ? await signIn(loginIdentifier, password)
+      : await signUp(loginIdentifier, password);
 
     if (err) setError(err);
     setLoading(false);
@@ -28,8 +33,12 @@ export default function AuthScreen() {
     <div className="flex flex-col h-full bg-gradient-to-br from-[#0A2463] via-[#143A8C] to-[#0A2463]">
       {/* Logo section */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
-        <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20">
-          <GraduationCap size={40} className="text-white" />
+        <div className="w-20 h-28 bg-white rounded-3xl flex items-center justify-center mb-4 shadow-xl overflow-hidden border-2 border-white/30">
+          <img 
+            src="https://ahjgfwpqugokzksfoufu.supabase.co/storage/v1/object/public/configuracion-pagos/logo.png" 
+            alt="Logo UBI" 
+            className="w-full h-full object-cover"
+          />
         </div>
         <h1 className="text-white font-extrabold text-2xl tracking-tight">Portal Financiero</h1>
         <p className="text-blue-200 text-sm mt-1">Universidad Boliviana de Informatica</p>
@@ -42,20 +51,26 @@ export default function AuthScreen() {
         </h2>
         <p className="text-gray-400 text-xs mb-5">
           {mode === 'login'
-            ? 'Ingresa con tu correo'
-            : 'Registra tu correo institucional para acceder'}
+            ? 'Ingresa con tu correo o número de celular'
+            : 'Registra tus datos institucionales para acceder'}
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label className="text-gray-600 text-xs font-semibold block mb-1.5">Correo Electronico</label>
+            <label className="text-gray-600 text-xs font-semibold block mb-1.5">
+              Correo Electronico o Celular
+            </label>
             <div className="relative">
-              <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              {isPhone ? (
+                <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              ) : (
+                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              )}
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="demo@ubi.edu.bo"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="correo@ubi.edu.bo o 70000000"
                 className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-[#0A2463] focus:ring-2 focus:ring-[#0A2463]/10 transition-all"
                 required
               />

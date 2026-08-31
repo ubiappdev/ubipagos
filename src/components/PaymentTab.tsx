@@ -308,7 +308,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
             <div className="bg-blue-50 rounded-2xl p-4 flex gap-3">
               <Smartphone size={18} className="text-blue-600 flex-shrink-0 mt-0.5" />
               <p className="text-blue-700 text-xs leading-relaxed">
-                Tras realizar el pago, deberas subir el comprobante en imagen para su verificacion automatica con OCR + IA.
+                Tras realizar el pago, deberas subir el comprobante en imagen para su verificacion automatica.
               </p>
             </div>
           </>

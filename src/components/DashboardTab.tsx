@@ -67,10 +67,10 @@ export default function DashboardTab({
     }
 
     setLoading(true);
-    console.log('Cargando datos für el alumno ID:', alumno.id);
+    console.log('Cargando datos para el alumno ID:', alumno.id);
 
     try {
-      // 1. Cargar mensualidades del alumno
+      // 1. Cargar todas las mensualidades del alumno (sin filtrar por estado para poder mostrar las pagadas)
       const { data: mensData, error: mensError } = await supabase
         .from('alumnos_mensualidades')
         .select('*')
@@ -146,12 +146,19 @@ export default function DashboardTab({
     );
   }
 
-  const pendientes = mensualidades.filter((m) => m.estado === 'PENDIENTE');
-  const totalDeuda = pendientes.reduce((s, m) => s + Number(m.monto_con_descuento || 0), 0);
-  const alDia = pendientes.length === 0;
+  // Deuda total solo considera las que están estrictamente pendientes y no tienen pago en proceso
+  const totalDeuda = mensualidades
+    .filter((m) => m.estado === 'PENDIENTE' && !pagosPorConfirmar.has(`mensualidad:${m.id}`))
+    .reduce((s, m) => s + Number(m.monto_con_descuento || 0), 0);
 
-  const toggleSelect = (id: string) => {
-    if (pagosPorConfirmar.has(`mensualidad:${id}`)) return;
+  const pendientesReales = mensualidades.filter(
+    (m) => m.estado === 'PENDIENTE' && !pagosPorConfirmar.has(`mensualidad:${m.id}`)
+  );
+
+  const alDia = pendientesReales.length === 0;
+
+  const toggleSelect = (id: string, estado: string, isPending: boolean) => {
+    if (estado === 'PAGADO' || isPending) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -160,35 +167,29 @@ export default function DashboardTab({
     });
   };
 
-  const selectedMensualidades = pendientes.filter((m) => selectedIds.has(m.id));
+  const selectablesPendientes = mensualidades.filter(
+    (m) => m.estado === 'PENDIENTE' && !pagosPorConfirmar.has(`mensualidad:${m.id}`)
+  );
+  
+  const selectedMensualidades = selectablesPendientes.filter((m) => selectedIds.has(m.id));
   const selectedTotal = selectedMensualidades.reduce((s, m) => s + Number(m.monto_con_descuento || 0), 0);
+  
   const allSelected =
-    pendientes.length > 0 &&
-    pendientes.every(
-      (m) => selectedIds.has(m.id) || pagosPorConfirmar.has(`mensualidad:${m.id}`)
-    );
+    selectablesPendientes.length > 0 &&
+    selectablesPendientes.every((m) => selectedIds.has(m.id));
 
   const toggleSelectAll = () => {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(
-        new Set(
-          pendientes
-            .filter((m) => !pagosPorConfirmar.has(`mensualidad:${m.id}`))
-            .map((m) => m.id)
-        )
-      );
+      setSelectedIds(new Set(selectablesPendientes.map((m) => m.id)));
     }
   };
 
   const fullName = `${alumno.nombres || ''} ${alumno.apellidos || ''}`.trim() || 'Estudiante';
-  
-  // Tratamiento seguro de campos de texto plano (carrera, curso y turno)
   const carreraName = alumno.carrera_id || '';
   const cursoName = typeof alumno.curso === 'string' ? alumno.curso : (alumno.curso as any)?.nombre_curso || '';
   const turnoName = typeof alumno.turno === 'string' ? alumno.turno : '';
-
   const gestion = `Gestión ${new Date().getFullYear()}`;
 
   const getDaysLeft = (fecha: string | null) => {
@@ -211,7 +212,6 @@ export default function DashboardTab({
             <h2 className="text-white font-bold text-base leading-tight mt-0.5">{fullName}</h2>
             {carreraName && <p className="text-blue-200 text-xs mt-1">{carreraName}</p>}
             
-            {/* Detalles adicionales (Curso / Turno) */}
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               {cursoName && (
                 <span className="text-white/80 text-xs bg-white/10 px-2 py-0.5 rounded">
@@ -229,6 +229,7 @@ export default function DashboardTab({
               <span className="bg-white/15 text-white/90 text-xs px-2.5 py-1 rounded-full font-mono">
                 {gestion}
               </span>
+              
               {alumno?.ci && (
                 <span className="bg-white/15 text-white/90 text-xs px-2.5 py-1 rounded-full font-mono">
                   CI: {alumno.ci}
@@ -262,59 +263,63 @@ export default function DashboardTab({
         </div>
       </div>
 
-      {/* Mensualidades Pendientes */}
+      {/* Historial / Listado de Mensualidades */}
       <div className="mx-4">
         <h3 className="text-[#0A2463] font-bold text-sm mb-3 uppercase tracking-wide">
-          Mensualidades Pendientes
+          Plan de Mensualidades
         </h3>
-        {pendientes.length === 0 ? (
-          <div className="bg-emerald-50 rounded-2xl p-5 flex items-center gap-3">
-            <ShieldCheck size={24} className="text-emerald-500 flex-shrink-0" />
-            <div>
-              <p className="text-emerald-700 font-semibold text-sm">No tienes mensualidades pendientes</p>
-              <p className="text-emerald-600 text-xs mt-0.5">Todas tus mensualidades están al día</p>
-            </div>
+        {mensualidades.length === 0 ? (
+          <div className="bg-gray-50 rounded-2xl p-5 text-center">
+            <p className="text-gray-500 text-xs">No se encontraron mensualidades registradas.</p>
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-2">
-              <button
-                onClick={toggleSelectAll}
-                className="flex items-center gap-2 text-[#0A2463] text-xs font-semibold hover:text-[#1E4DB7] transition-colors"
-              >
-                {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                {allSelected ? 'Quitar selección' : 'Seleccionar todas'}
-              </button>
-              {selectedIds.size > 0 && (
-                <span className="text-gray-400 text-xs">{selectedIds.size} seleccionada(s)</span>
-              )}
-            </div>
+            {selectablesPendientes.length > 0 && (
+              <div className="flex items-center justify-between mb-2">
+                <button
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-2 text-[#0A2463] text-xs font-semibold hover:text-[#1E4DB7] transition-colors"
+                >
+                  {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                  {allSelected ? 'Quitar selección' : 'Seleccionar pendientes'}
+                </button>
+                {selectedIds.size > 0 && (
+                  <span className="text-gray-400 text-xs">{selectedIds.size} seleccionada(s)</span>
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-3">
-              {pendientes.map((debt) => {
-                const daysLeft = getDaysLeft(debt.fecha_vencimiento);
-                const isOverdue = daysLeft < 0;
-                const isUrgent = daysLeft >= 0 && daysLeft <= 5;
-                const isSelected = selectedIds.has(debt.id);
+              {mensualidades.map((debt) => {
+                const isPaid = debt.estado === 'PAGADO';
                 const isPending = pagosPorConfirmar.has(`mensualidad:${debt.id}`);
+                const daysLeft = getDaysLeft(debt.fecha_vencimiento);
+                const isOverdue = !isPaid && !isPending && daysLeft < 0;
+                const isUrgent = !isPaid && !isPending && daysLeft >= 0 && daysLeft <= 5;
+                const isSelected = selectedIds.has(debt.id);
+
+                let borderColor = 'border-blue-400';
+                if (isPaid) borderColor = 'border-emerald-500';
+                else if (isPending) borderColor = 'border-amber-400';
+                else if (isOverdue) borderColor = 'border-red-500';
+                else if (isUrgent) borderColor = 'border-amber-400';
+
                 return (
                   <div
                     key={debt.id}
-                    className={`bg-white rounded-2xl p-4 shadow-sm border-l-4 ${
-                      isOverdue
-                        ? 'border-red-500'
-                        : isUrgent
-                        ? 'border-amber-400'
-                        : 'border-blue-400'
+                    className={`bg-white rounded-2xl p-4 shadow-sm border-l-4 ${borderColor} ${
+                      isPaid ? 'opacity-85 bg-gray-50/50' : ''
                     } ${isSelected ? 'ring-2 ring-[#0A2463]/30' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-2.5 flex-1">
                         <button
-                          onClick={() => toggleSelect(debt.id)}
-                          disabled={isPending}
+                          onClick={() => toggleSelect(debt.id, debt.estado, isPending)}
+                          disabled={isPaid || isPending}
                           className="mt-0.5 flex-shrink-0 disabled:cursor-not-allowed"
                         >
-                          {isPending ? (
+                          {isPaid ? (
+                            <CheckCircle2 size={18} className="text-emerald-500" />
+                          ) : isPending ? (
                             <Clock size={18} className="text-amber-500" />
                           ) : isSelected ? (
                             <CheckSquare size={18} className="text-[#0A2463]" />
@@ -324,7 +329,11 @@ export default function DashboardTab({
                         </button>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            {isOverdue ? (
+                            {isPaid ? (
+                              <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+                            ) : isPending ? (
+                              <Clock size={14} className="text-amber-500 flex-shrink-0" />
+                            ) : isOverdue ? (
                               <AlertCircle size={14} className="text-red-500 flex-shrink-0" />
                             ) : (
                               <Clock size={14} className="text-amber-500 flex-shrink-0" />
@@ -344,34 +353,52 @@ export default function DashboardTab({
                             </span>
                             <span
                               className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                isOverdue
+                                isPaid
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : isPending
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : isOverdue
                                   ? 'bg-red-100 text-red-600'
                                   : isUrgent
                                   ? 'bg-amber-100 text-amber-700'
                                   : 'bg-blue-100 text-blue-700'
                               }`}
                             >
-                              {isOverdue
+                              {isPaid
+                                ? 'Pagado'
+                                : isPending
+                                ? 'Pago en revisión'
+                                : isOverdue
                                 ? `Venció hace ${Math.abs(daysLeft)} días`
                                 : `Vence en ${daysLeft} días`}
                             </span>
                           </div>
-                          {debt.fecha_vencimiento && (
+                          {debt.fecha_vencimiento && !isPaid && (
                             <p className="text-gray-400 text-xs mt-1">
                               Vencimiento: {new Date(debt.fecha_vencimiento).toLocaleDateString('es-BO')}
                             </p>
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => onPayMensualidad(debt.id)}
-                        disabled={isPending}
-                        className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-95 disabled:cursor-not-allowed disabled:bg-amber-500 ${
-                          isOverdue ? 'bg-red-500' : 'bg-[#0A2463]'
-                        }`}
-                      >
-                        {isPending ? 'Por confirmar' : 'Pagar'}
-                      </button>
+
+                      {/* Botón de acción adaptado al estado */}
+                      {!isPaid && (
+                        <button
+                          onClick={() => onPayMensualidad(debt.id)}
+                          disabled={isPending}
+                          className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-95 disabled:cursor-not-allowed disabled:bg-amber-500 disabled:opacity-90 ${
+                            isPending ? 'bg-amber-500' : isOverdue ? 'bg-red-500' : 'bg-[#0A2463]'
+                          }`}
+                        >
+                          {isPending ? 'Por confirmar' : 'Pagar'}
+                        </button>
+                      )}
+                      {isPaid && (
+                        <span className="text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1">
+                          <CheckCircle2 size={13} />
+                          Completado
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -408,12 +435,13 @@ export default function DashboardTab({
         <div className="grid grid-cols-2 gap-3">
           {aranceles.map((arancel) => {
             const Icon = iconMap[arancel.categoria || ''] ?? FileText;
+            const isPending = pagosPorConfirmar.has(`arancel:${arancel.id}`);
             return (
               <button
                 key={arancel.id}
                 onClick={() => onPayArancel(arancel.id)}
-                disabled={pagosPorConfirmar.has(`arancel:${arancel.id}`)}
-                className="bg-white rounded-2xl p-4 shadow-sm text-left hover:shadow-md transition-all active:scale-95 group disabled:cursor-not-allowed disabled:opacity-75"
+                disabled={isPending}
+                className="bg-white rounded-2xl p-4 shadow-sm text-left hover:shadow-md transition-all active:scale-95 group disabled:cursor-not-allowed disabled:opacity-90"
               >
                 <div className="w-10 h-10 rounded-xl bg-blue-50 group-hover:bg-blue-100 flex items-center justify-center mb-3 transition-colors">
                   <Icon size={20} className="text-[#0A2463]" />
@@ -421,7 +449,7 @@ export default function DashboardTab({
                 <p className="text-gray-800 font-semibold text-xs leading-tight">{arancel.concepto}</p>
                 <p className="text-gray-400 text-xs mt-0.5">{arancel.categoria}</p>
                 <div className="flex items-center justify-between mt-2">
-                  {pagosPorConfirmar.has(`arancel:${arancel.id}`) ? (
+                  {isPending ? (
                     <span className="text-amber-600 font-bold text-xs">Por confirmar</span>
                   ) : (
                     <span className="text-[#0A2463] font-bold text-sm">
