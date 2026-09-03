@@ -73,19 +73,9 @@ function AppContent() {
 
         {/* Status bar */}
         <div className="bg-[#0A2463] text-white flex items-center justify-between px-5 py-2 text-xs font-medium z-40">
-          <span className="font-mono">9:41</span>
+          <span className="font-mono">UBI</span>
           <div className="flex items-center gap-1.5">
-            <svg width="14" height="10" viewBox="0 0 14 10" fill="currentColor">
-              <rect x="0" y="6" width="2" height="4" rx="0.5" />
-              <rect x="3" y="4" width="2" height="6" rx="0.5" />
-              <rect x="6" y="2" width="2" height="8" rx="0.5" />
-              <rect x="9" y="0" width="2" height="10" rx="0.5" />
-            </svg>
             <div className="flex items-center">
-              <div className="w-6 h-3 border border-white rounded-sm relative">
-                <div className="absolute inset-0.5 bg-white rounded-sm" style={{ width: '75%' }} />
-              </div>
-              <div className="w-0.5 h-1.5 bg-white rounded-r ml-0.5" />
             </div>
           </div>
         </div>

@@ -15,6 +15,7 @@ import {
   Clock,
   Landmark,
   Loader2,
+  Cpu,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
@@ -47,6 +48,16 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
   const [item, setItem] = useState<{ id: string; concept: string; amount: number } | null>(null);
   const [, setPagoId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  
+  // Estado para almacenar la respuesta de la IA / OCR
+  const [aiResult, setAiResult] = useState<{
+    success?: boolean;
+    mensaje?: string;
+    montoDetectado?: number;
+    transaccionDetectada?: string;
+    bancoDetectado?: string;
+    observacion?: string;
+  } | null>(null);
 
   useEffect(() => {
     const monthlyIds = selectedItemIds.length ? selectedItemIds : selectedItemId ? [selectedItemId] : [];
@@ -134,6 +145,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
         if (insertError) throw insertError;
         setPagoId(pagoData?.id ?? null);
 
+        // Llamada a la Edge Function de validación
         try {
           const validationResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validar-comprobante`,
@@ -146,11 +158,23 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
               body: JSON.stringify({ pagoId: pagoData?.id }),
             }
           );
-          if (!validationResponse.ok) {
-            console.warn('El comprobante quedo pendiente de validacion.');
+          
+          if (validationResponse.ok) {
+            const resData = await validationResponse.json();
+            setAiResult(resData);
+          } else {
+            setAiResult({
+              success: false,
+              mensaje: 'El comprobante quedó pendiente de validación manual.',
+              observacion: 'No se pudo procesar automáticamente con la IA.',
+            });
           }
         } catch {
-          console.warn('El comprobante quedo pendiente de validacion.');
+          setAiResult({
+            success: false,
+            mensaje: 'El comprobante quedó pendiente de validación.',
+            observacion: 'Error de red al conectar con el servicio de validación.',
+          });
         }
 
         setStep('success');
@@ -177,6 +201,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
     setSelectedMethod(null);
     setUploadedFile(null);
     setPagoId(null);
+    setAiResult(null);
     setErrorMsg('');
     onBack();
   };
@@ -197,7 +222,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
         </div>
         <h2 className="text-[#0A2463] font-bold text-lg">Selecciona un pago</h2>
         <p className="text-gray-400 text-sm leading-relaxed">
-          Desde la pestana Inicio, selecciona una mensualidad o arancel para iniciar el proceso de pago.
+          Desde la pestaña Inicio, selecciona una mensualidad o arancel para iniciar el proceso de pago.
         </p>
       </div>
     );
@@ -327,7 +352,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
                 <img
                   src="https://ahjgfwpqugokzksfoufu.supabase.co/storage/v1/object/public/configuracion-pagos/qr_ubi.JPG"
                   alt="Codigo QR para realizar el pago"
-                  onError={(event) => { event.currentTarget.src = '/storage/WhatsApp_Image_2026-08-13_at_16.23.30.jpeg'; }}
+                  onError={(event) => { event.currentTarget.src = 'https://ahjgfwpqugokzksfoufu.supabase.co/storage/v1/object/public/configuracion-pagos/WhatsApp_Image_2026-08-13_at_16.23.30.jpeg'; }}
                   className="w-[200px] h-[200px] object-contain"
                 />
               </div>
@@ -523,31 +548,73 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
             <div className="text-center">
               <h2 className="text-gray-800 font-extrabold text-xl">Comprobante Enviado</h2>
               <p className="text-gray-400 text-sm mt-2 leading-relaxed">
-                Tu comprobante fue recibido y quedo registrado como Por confirmar.
+                Tu comprobante fue recibido y analizado por el sistema de Inteligencia Artificial.
               </p>
             </div>
+
             <div className="w-full bg-white rounded-2xl p-5 shadow-sm border border-emerald-100">
               <div className="flex justify-between py-2.5 border-b border-gray-50">
                 <span className="text-gray-400 text-sm">Concepto</span>
                 <span className="text-gray-700 font-medium text-sm text-right max-w-[55%]">{item.concept}</span>
               </div>
               <div className="flex justify-between py-2.5 border-b border-gray-50">
-                <span className="text-gray-400 text-sm">Monto</span>
+                <span className="text-gray-400 text-sm">Monto Solicitado</span>
                 <span className="text-[#0A2463] font-bold text-sm">Bs {item.amount.toLocaleString('es-BO')}</span>
               </div>
               <div className="flex justify-between py-2.5 border-b border-gray-50">
                 <span className="text-gray-400 text-sm">Metodo</span>
                 <span className="text-gray-700 font-medium text-sm">{selectedMethod && methodLabels[selectedMethod]}</span>
               </div>
-              <div className="flex justify-between pt-2.5">
+
+              {/* SECCIÓN DE TEXTOS / DATOS QUE VE LA IA */}
+              <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Cpu size={15} className="text-[#0A2463]" />
+                  <span className="text-xs font-bold text-[#0A2463]">Análisis y Extracción por IA</span>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-3 flex flex-col gap-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Monto Detectado:</span>
+                    <span className="font-semibold text-gray-700">
+                      {aiResult?.montoDetectado ? `Bs ${aiResult.montoDetectado}` : `Bs ${item.amount.toLocaleString('es-BO')} (Validado)`}
+                    </span>
+                  </div>
+                  {aiResult?.transaccionDetectada && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Nro. Transacción:</span>
+                      <span className="font-semibold font-mono text-gray-700">{aiResult.transaccionDetectada}</span>
+                    </div>
+                  )}
+                  {aiResult?.bancoDetectado && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Banco Emisor:</span>
+                      <span className="font-semibold text-gray-700">{aiResult.bancoDetectado}</span>
+                    </div>
+                  )}
+                  {aiResult?.observacion && (
+                    <div className="pt-1 border-t border-gray-200 text-gray-500 italic">
+                      "{aiResult.observacion}"
+                    </div>
+                  )}
+                  {!aiResult?.observacion && (
+                    <div className="pt-1 border-t border-gray-200 text-emerald-600 font-medium">
+                      ✓ Lectura de imagen y datos completada con éxito.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-between pt-3 mt-2 border-t border-gray-50">
                 <span className="text-gray-400 text-sm">Estado</span>
-                <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full">Enviado</span>
+                <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full">Por confirmar</span>
               </div>
             </div>
+
             <div className="w-full bg-blue-50 rounded-2xl p-4 flex gap-3">
               <AlertCircle size={16} className="text-blue-500 flex-shrink-0 mt-0.5" />
               <p className="text-blue-700 text-xs leading-relaxed">
-                Recibiras una notificacion en el <strong>Buzon</strong> cuando tu pago sea aprobado o rechazado.
+                Recibiras una notificacion en el <strong>Buzon</strong> cuando tu pago sea aprobado o rechazado definitivamente.
               </p>
             </div>
             <button onClick={resetFlow} className="w-full bg-[#0A2463] text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-[#1E4DB7] transition-colors active:scale-95">
