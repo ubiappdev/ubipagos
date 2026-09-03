@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.ico', 'masked-icon.svg'],
       manifest: {
-        name: 'Sistema de Gestión de Pagos',
-        short_name: 'PagosApp',
-        description: 'Gestión y conciliación de pagos de alumnos con IA',
+        name: 'UBI-U',
+        short_name: 'UBI-U',
+        description: 'Sistema de Gestión y Conciliación de Pagos UBI-U',
         theme_color: '#0f172a',
         background_color: '#ffffff',
         display: 'standalone',
