@@ -43,12 +43,18 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
   const [step, setStep] = useState<Step>('detail');
   const [selectedMethod, setSelectedMethod] = useState<Method | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(true);
   const [item, setItem] = useState<{ id: string; concept: string; amount: number } | null>(null);
   const [, setPagoId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
-  
+
+  // Estado para el concepto "Otros": descripcion libre y monto ingresado por el usuario
+  const [otrosDescripcion, setOtrosDescripcion] = useState('');
+  const [otrosMonto, setOtrosMonto] = useState('');
+  const [otrosError, setOtrosError] = useState('');
+
   // Estado para almacenar la respuesta de la IA / OCR
   const [aiResult, setAiResult] = useState<{
     success?: boolean;
@@ -94,96 +100,19 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
     fetch();
   }, [alumno, selectedItemId, selectedItemIds, selectedItemType]);
 
+  // Selección o guardado temporal de archivo para vista previa
   const handleFileSelect = useCallback(
-    async (file: File) => {
-      if (!alumno || !item || !selectedMethod) return;
+    (file: File) => {
       const allowed = ['image/png', 'image/jpeg', 'image/jpg'];
       if (!allowed.includes(file.type)) {
         setErrorMsg('Solo se aceptan imagenes PNG o JPG.');
         return;
       }
       setUploadedFile(file);
-      setStep('processing');
-
-      try {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${alumno.id}/${Date.now()}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('comprobantes')
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-
-        const txNum = `#${Math.floor(8000000 + Math.random() * 999999)}`;
-
-        const insertData: Record<string, unknown> = {
-          alumno_id: alumno.id,
-          monto_pagado: item.amount,
-          canal_pago: selectedMethod,
-          numero_transaccion: txNum,
-          fecha_pago: new Date().toISOString(),
-          comprobante_url: fileName,
-          concepto: item.concept,
-          estado_conciliacion: 'PENDIENTE',
-        };
-
-        if (selectedItemType === 'mensualidad') {
-          const monthlyIds = selectedItemIds.length ? selectedItemIds : [item.id];
-          insertData.mensualidad_id = monthlyIds[0];
-          insertData.mensualidad_ids = monthlyIds;
-        } else {
-          insertData.arancel_id = item.id;
-        }
-
-        const { data: pagoData, error: insertError } = await supabase
-          .from('alumnos_pagos')
-          .insert(insertData)
-          .select('id')
-          .maybeSingle();
-
-        if (insertError) throw insertError;
-        setPagoId(pagoData?.id ?? null);
-
-        // Llamada a la Edge Function de validación
-        try {
-          const validationResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validar-comprobante`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-              body: JSON.stringify({ pagoId: pagoData?.id }),
-            }
-          );
-          
-          if (validationResponse.ok) {
-            const resData = await validationResponse.json();
-            setAiResult(resData);
-          } else {
-            setAiResult({
-              success: false,
-              mensaje: 'El comprobante quedó pendiente de validación manual.',
-              observacion: 'No se pudo procesar automáticamente con la IA.',
-            });
-          }
-        } catch {
-          setAiResult({
-            success: false,
-            mensaje: 'El comprobante quedó pendiente de validación.',
-            observacion: 'Error de red al conectar con el servicio de validación.',
-          });
-        }
-
-        setStep('success');
-      } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : 'Error al subir el comprobante');
-        setStep('error');
-      }
+      setPreviewUrl(URL.createObjectURL(file));
+      setErrorMsg('');
     },
-    [alumno, item, selectedMethod, selectedItemType, selectedItemIds]
+    []
   );
 
   const handleDrop = useCallback(
@@ -196,13 +125,101 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
     [handleFileSelect]
   );
 
+  // Acción para confirmar y enviar el archivo ya seleccionado previamente
+  const handleConfirmUpload = async () => {
+    if (!alumno || !item || !selectedMethod || !uploadedFile) return;
+    setStep('processing');
+
+    try {
+      const fileExt = uploadedFile.name.split('.').pop();
+      const fileName = `${alumno.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('comprobantes')
+        .upload(fileName, uploadedFile);
+
+      if (uploadError) throw uploadError;
+
+      const txNum = `#${Math.floor(8000000 + Math.random() * 999999)}`;
+
+      const insertData: Record<string, unknown> = {
+        alumno_id: alumno.id,
+        monto_pagado: item.amount,
+        canal_pago: selectedMethod,
+        numero_transaccion: txNum,
+        fecha_pago: new Date().toISOString(),
+        comprobante_url: fileName,
+        concepto: item.concept,
+        estado_conciliacion: 'PENDIENTE',
+      };
+
+      if (selectedItemType === 'mensualidad') {
+        const monthlyIds = selectedItemIds.length ? selectedItemIds : [item.id];
+        insertData.mensualidad_id = monthlyIds[0];
+        insertData.mensualidad_ids = monthlyIds;
+      } else {
+        insertData.arancel_id = item.id;
+      }
+
+      const { data: pagoData, error: insertError } = await supabase
+        .from('alumnos_pagos')
+        .insert(insertData)
+        .select('id')
+        .maybeSingle();
+
+      if (insertError) throw insertError;
+      setPagoId(pagoData?.id ?? null);
+
+      // Llamada a la Edge Function de validación
+      try {
+        const validationResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validar-comprobante`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ pagoId: pagoData?.id }),
+          }
+        );
+
+        if (validationResponse.ok) {
+          const resData = await validationResponse.json();
+          setAiResult(resData);
+        } else {
+          setAiResult({
+            success: false,
+            mensaje: 'El comprobante quedó pendiente de validación manual.',
+            observacion: 'No se pudo procesar automáticamente con la IA.',
+          });
+        }
+      } catch {
+        setAiResult({
+          success: false,
+          mensaje: 'El comprobante quedó pendiente de validación.',
+          observacion: 'Error de red al conectar con el servicio de validación.',
+        });
+      }
+
+      setStep('success');
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Error al subir el comprobante');
+      setStep('error');
+    }
+  };
+
   const resetFlow = () => {
     setStep('detail');
     setSelectedMethod(null);
     setUploadedFile(null);
+    setPreviewUrl(null);
     setPagoId(null);
     setAiResult(null);
     setErrorMsg('');
+    setOtrosDescripcion('');
+    setOtrosMonto('');
+    setOtrosError('');
     onBack();
   };
 
@@ -227,6 +244,30 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
       </div>
     );
   }
+
+  // Detecta si el arancel seleccionado es "Otros": en ese caso el concepto y el monto
+  // se completan manualmente en la pantalla de detalle, en vez de venir fijos de la BD.
+  const isOtros = selectedItemType === 'arancel' && item.concept.trim().toLowerCase() === 'otros';
+
+  const handleDetailContinue = () => {
+    if (isOtros) {
+      const descripcion = otrosDescripcion.trim();
+      const monto = parseFloat(otrosMonto);
+
+      if (!descripcion) {
+        setOtrosError('Ingresa una descripcion para el concepto.');
+        return;
+      }
+      if (!otrosMonto || Number.isNaN(monto) || monto <= 0) {
+        setOtrosError('Ingresa un monto valido mayor a 0.');
+        return;
+      }
+
+      setOtrosError('');
+      setItem((prev) => (prev ? { ...prev, concept: `Otros - ${descripcion}`, amount: monto } : prev));
+    }
+    setStep('method');
+  };
 
   const stepIndex = ['detail', 'method', 'qr', 'deposito', 'efectivo', 'transferencia', 'upload', 'processing', 'success', 'error'].indexOf(step);
   const currentStepLabel = stepIndex <= 1 ? 0 : stepIndex <= 5 ? 1 : 2;
@@ -279,21 +320,68 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
           <>
             <div className="bg-white rounded-2xl p-5 shadow-sm">
               <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wide mb-4">Resumen de Pago</h3>
-              <div className="flex justify-between items-center py-2.5 border-b border-gray-50">
-                <span className="text-gray-500 text-sm">Concepto</span>
-                <span className="text-gray-800 font-medium text-sm text-right max-w-[55%]">{item.concept}</span>
-              </div>
+
+              {isOtros ? (
+                <div className="py-2.5 border-b border-gray-50">
+                  <span className="text-gray-500 text-sm block mb-2">Concepto</span>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-blue-50 text-[#0A2463] font-bold text-sm px-3 py-2.5 rounded-lg flex-shrink-0">
+                      Otros
+                    </span>
+                    <input
+                      type="text"
+                      value={otrosDescripcion}
+                      onChange={(e) => setOtrosDescripcion(e.target.value)}
+                      placeholder="Especifica el concepto..."
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:border-[#0A2463]"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center py-2.5 border-b border-gray-50">
+                  <span className="text-gray-500 text-sm">Concepto</span>
+                  <span className="text-gray-800 font-medium text-sm text-right max-w-[55%]">{item.concept}</span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center py-2.5 border-b border-gray-50">
                 <span className="text-gray-500 text-sm">Moneda</span>
                 <span className="text-gray-800 font-medium text-sm">Bolivianos (Bs)</span>
               </div>
-              <div className="flex justify-between items-center pt-3 mt-1">
-                <span className="text-gray-700 font-bold text-sm">Total a Pagar</span>
-                <span className="text-[#0A2463] font-extrabold text-2xl">Bs {item.amount.toLocaleString('es-BO')}</span>
-              </div>
+
+              {isOtros ? (
+                <div className="pt-3 mt-1">
+                  <span className="text-gray-700 font-bold text-sm block mb-2">Total a Pagar</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 font-bold text-lg">Bs</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={otrosMonto}
+                      onChange={(e) => setOtrosMonto(e.target.value)}
+                      placeholder="0.00"
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-lg font-bold text-[#0A2463] focus:outline-none focus:border-[#0A2463]"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center pt-3 mt-1">
+                  <span className="text-gray-700 font-bold text-sm">Total a Pagar</span>
+                  <span className="text-[#0A2463] font-extrabold text-2xl">Bs {item.amount.toLocaleString('es-BO')}</span>
+                </div>
+              )}
             </div>
+
+            {isOtros && otrosError && (
+              <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle size={14} className="flex-shrink-0" />
+                <span>{otrosError}</span>
+              </div>
+            )}
+
             <button
-              onClick={() => setStep('method')}
+              onClick={handleDetailContinue}
               className="bg-[#0A2463] text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-[#1E4DB7] transition-colors active:scale-95"
             >
               Elegir Metodo de Pago
@@ -416,8 +504,8 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
                 <div className="flex items-start gap-3 bg-amber-50 rounded-xl p-3.5">
                   <MapPin size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-gray-800 font-semibold text-sm">Caja Central - Campus La Paz</p>
-                    <p className="text-gray-400 text-xs mt-0.5">Edificio Principal, Piso 1 · Av. 6 de Agosto N° 1234</p>
+                    <p className="text-gray-800 font-semibold text-sm">Caja Central - El Alto - La Paz</p>
+                    <p className="text-gray-400 text-xs mt-0.5">Edificio Principal, Piso 3 · CALLE JORGE CARRASCO NRO. 88</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 bg-blue-50 rounded-xl p-3.5">
@@ -444,7 +532,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
               </div>
             </div>
             <button onClick={() => setStep('upload')} className="bg-[#0A2463] text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-[#1E4DB7] transition-colors active:scale-95">
-              Subir Foto del Recibo
+              Subir Foto del Recibo/Factura
             </button>
           </>
         )}
@@ -477,7 +565,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
           </>
         )}
 
-        {/* STEP: UPLOAD */}
+        {/* STEP: UPLOAD CON VISTA PREVIA */}
         {step === 'upload' && (
           <>
             <div className="bg-white rounded-2xl p-5 shadow-sm">
@@ -489,24 +577,57 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
                 Metodo seleccionado: <span className="font-semibold text-gray-600">{selectedMethod && methodLabels[selectedMethod]}</span>
               </p>
               <p className="text-gray-400 text-xs mb-5">
-                Sube una foto de tu comprobante. El sistema validara el pago automaticamente con OCR + IA.
+                Sube una foto de tu comprobante. El sistema validara el pago automaticamente.
               </p>
-              <label
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                className={`flex flex-col items-center justify-center w-full h-44 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${
-                  dragOver ? 'border-[#0A2463] bg-blue-50 scale-[1.02]' : 'border-gray-200 bg-gray-50 hover:border-[#0A2463] hover:bg-blue-50'
-                }`}
-              >
-                <input type="file" className="hidden" accept="image/png,image/jpeg,image/jpg" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileSelect(file); }} />
-                <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-3 transition-colors ${dragOver ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                  <FileImage size={26} className={dragOver ? 'text-[#0A2463]' : 'text-gray-400'} />
+
+              {errorMsg && (
+                <div className="mb-4 bg-red-50 text-red-600 p-3 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle size={14} className="flex-shrink-0" />
+                  <span>{errorMsg}</span>
                 </div>
-                <p className="text-gray-600 font-semibold text-sm">{dragOver ? 'Suelta la imagen aqui' : 'Arrastra tu comprobante aqui'}</p>
-                <p className="text-gray-400 text-xs mt-1">o haz clic para seleccionar</p>
-                <p className="text-gray-300 text-xs mt-3">PNG o JPG · Max. 10 MB</p>
-              </label>
+              )}
+
+              {previewUrl ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative w-full h-56 rounded-2xl overflow-hidden border-2 border-gray-200 bg-gray-50 flex items-center justify-center">
+                    <img src={previewUrl} alt="Vista previa del comprobante" className="w-full h-full object-contain" />
+                    <button
+                      onClick={() => { setUploadedFile(null); setPreviewUrl(null); }}
+                      className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 hover:bg-black/80 transition-colors"
+                      title="Cambiar imagen"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 font-medium truncate max-w-[240px]">
+                    {uploadedFile?.name}
+                  </p>
+                  <button
+                    onClick={handleConfirmUpload}
+                    className="w-full bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-emerald-700 transition-colors active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 size={18} />
+                    Confirmar y Enviar Comprobante
+                  </button>
+                </div>
+              ) : (
+                <label
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  className={`flex flex-col items-center justify-center w-full h-44 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${
+                    dragOver ? 'border-[#0A2463] bg-blue-50 scale-[1.02]' : 'border-gray-200 bg-gray-50 hover:border-[#0A2463] hover:bg-blue-50'
+                  }`}
+                >
+                  <input type="file" className="hidden" accept="image/png,image/jpeg,image/jpg" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileSelect(file); }} />
+                  <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-3 transition-colors ${dragOver ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                    <FileImage size={26} className={dragOver ? 'text-[#0A2463]' : 'text-gray-400'} />
+                  </div>
+                  <p className="text-gray-600 font-semibold text-sm">{dragOver ? 'Suelta la imagen aqui' : 'Arrastra tu comprobante aqui'}</p>
+                  <p className="text-gray-400 text-xs mt-1">o haz clic para seleccionar</p>
+                  <p className="text-gray-300 text-xs mt-3">PNG o JPG · Max. 10 MB</p>
+                </label>
+              )}
             </div>
           </>
         )}
@@ -523,7 +644,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
             </div>
             <div className="text-center">
               <h3 className="text-[#0A2463] font-bold text-lg">Subiendo comprobante...</h3>
-              <p className="text-gray-400 text-sm mt-2">Guardando y enviando a verificacion OCR + IA</p>
+              <p className="text-gray-400 text-sm mt-2">Guardando y enviando a verificacion</p>
               {uploadedFile && (
                 <div className="mt-4 bg-gray-50 rounded-xl px-4 py-2.5 inline-flex items-center gap-2">
                   <FileImage size={14} className="text-gray-400" />
@@ -548,7 +669,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
             <div className="text-center">
               <h2 className="text-gray-800 font-extrabold text-xl">Comprobante Enviado</h2>
               <p className="text-gray-400 text-sm mt-2 leading-relaxed">
-                Tu comprobante fue recibido y analizado por el sistema de Inteligencia Artificial.
+                Tu comprobante fue recibido y analizado.
               </p>
             </div>
 
@@ -570,7 +691,7 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
               <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Cpu size={15} className="text-[#0A2463]" />
-                  <span className="text-xs font-bold text-[#0A2463]">Análisis y Extracción por IA</span>
+                  <span className="text-xs font-bold text-[#0A2463]">Datos del comprobante</span>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-3 flex flex-col gap-2 text-xs">
@@ -605,16 +726,13 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
                 </div>
               </div>
 
-              <div className="flex justify-between pt-3 mt-2 border-t border-gray-50">
-                <span className="text-gray-400 text-sm">Estado</span>
-                <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full">Por confirmar</span>
-              </div>
+              
             </div>
 
             <div className="w-full bg-blue-50 rounded-2xl p-4 flex gap-3">
               <AlertCircle size={16} className="text-blue-500 flex-shrink-0 mt-0.5" />
               <p className="text-blue-700 text-xs leading-relaxed">
-                Recibiras una notificacion en el <strong>Buzon</strong> cuando tu pago sea aprobado o rechazado definitivamente.
+                Recibiras una notificacion en el <strong>Buzon</strong> cuando tu pago sea aprobado.
               </p>
             </div>
             <button onClick={resetFlow} className="w-full bg-[#0A2463] text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-[#1E4DB7] transition-colors active:scale-95">

@@ -181,7 +181,7 @@ export default function HistoryTab() {
             <div className="p-5 flex flex-col gap-3">
               <div className="text-center pb-3 border-b border-dashed border-gray-200">
                 <p className="text-[#0A2463] font-extrabold text-lg">UNIVERSIDAD BOLIVIANA DE INFORMATICA</p>
-                <p className="text-gray-400 text-xs mt-0.5">NIT: 1023456789 · La Paz, Bolivia</p>
+                <p className="text-gray-400 text-xs mt-0.5">La Paz, Bolivia</p>
               </div>
 
               <div className="flex justify-between py-1.5">
@@ -229,7 +229,7 @@ export default function HistoryTab() {
                 <div className="bg-blue-50 rounded-xl p-3 mt-2">
                   <div className="flex items-center gap-2 mb-2">
                     <ScanLine size={14} className="text-blue-600" />
-                    <span className="text-blue-700 text-xs font-bold">Verificacion OCR + IA</span>
+                    <span className="text-blue-700 text-xs font-bold">Verificacion</span>
                   </div>
                   {(() => {
                     const ocr = receiptPago.ocr_data as Record<string, unknown>;
@@ -260,10 +260,7 @@ export default function HistoryTab() {
               <button onClick={() => setReceiptPago(null)} className="flex-1 border border-gray-200 text-gray-500 font-semibold py-3 rounded-xl text-sm hover:bg-gray-50 transition-colors">
                 Cerrar
               </button>
-              <button onClick={() => window.print()} className="flex-1 bg-[#0A2463] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#1E4DB7] transition-colors flex items-center justify-center gap-2">
-                <Download size={16} />
-                Descargar PDF
-              </button>
+              
             </div>
           </div>
         </div>
