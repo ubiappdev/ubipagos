@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Mail, Phone, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Mail, Phone, Lock, Eye, EyeOff, Loader2, KeyRound, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { supabase } from '../lib/supabase';
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
@@ -10,6 +11,12 @@ export default function AuthScreen() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Estados para el modal de recuperación de contraseña (Magic Link / Reset)
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Detectar si el usuario ingresó un número de teléfono o un correo
   const isPhone = /^[0-9+\s-]{7,15}$/.test(identifier.trim());
@@ -27,6 +34,45 @@ export default function AuthScreen() {
 
     if (err) setError(err);
     setLoading(false);
+  };
+
+  // Función para enviar el enlace de recuperación de contraseña con Supabase
+  const handlePasswordRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryMessage(null);
+
+    const cleanInput = recoveryEmail.trim();
+    if (!cleanInput) {
+      setRecoveryMessage({ type: 'error', text: 'Por favor ingresa tu correo o número de celular.' });
+      return;
+    }
+
+    // Si ingresó teléfono, adaptarlo al dominio interno de SMS
+    const isRecoveryPhone = /^[0-9+\s-]{7,15}$/.test(cleanInput);
+    const targetEmail = isRecoveryPhone ? `${cleanInput}@sms.ubi.edu.bo` : cleanInput;
+
+    setRecoveryLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
+        redirectTo: window.location.origin, // Redirige de vuelta a la app para cambiar la clave
+      });
+
+      if (error) throw error;
+
+      setRecoveryMessage({
+        type: 'success',
+        text: '¡Enlace enviado! Revisa tu bandeja de entrada o correo institucional para restablecer tu contraseña.',
+      });
+      setRecoveryEmail('');
+    } catch (err: any) {
+      setRecoveryMessage({
+        type: 'error',
+        text: err.message || 'No se pudo enviar el correo de recuperación. Verifica los datos.',
+      });
+    } finally {
+      setRecoveryLoading(false);
+    }
   };
 
   return (
@@ -78,7 +124,22 @@ export default function AuthScreen() {
           </div>
 
           <div>
-            <label className="text-gray-600 text-xs font-semibold block mb-1.5">Contrasena</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-gray-600 text-xs font-semibold">Contrasena</label>
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecoveryMessage(null);
+                    setRecoveryEmail(identifier); // Pre-rellena si ya escribió algo
+                    setShowForgotModal(true);
+                  }}
+                  className="text-xs text-[#0A2463] font-semibold hover:underline"
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              )}
+            </div>
             <div className="relative">
               <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -130,15 +191,87 @@ export default function AuthScreen() {
         </div>
 
         <div className="mt-auto pt-5">
-          <div className="bg-blue-50 rounded-xl p-3.5 flex gap-2.5">
-            <Mail size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-blue-700 text-xs font-semibold">Cuenta de prueba</p>
-              <p className="text-blue-600/70 text-xs mt-0.5">demo@ubi.edu.bo · Demo1234!</p>
+         </div>
+      </div>
+
+      {/* Modal para Recuperar Contraseña (Magic Link / Enlace de Restablecimiento) */}
+      {showForgotModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200">
+            <button
+              onClick={() => setShowForgotModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-[#0A2463]">
+                <KeyRound size={20} />
+              </div>
+              <div>
+                <h3 className="text-[#0A2463] font-bold text-base">Recuperar contraseña</h3>
+                <p className="text-gray-400 text-xs">Te enviaremos un enlace de acceso seguro</p>
+              </div>
             </div>
+
+            {recoveryMessage && (
+              <div
+                className={`mb-4 p-3.5 rounded-2xl text-xs font-medium flex items-start gap-2.5 ${
+                  recoveryMessage.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-red-50 text-red-600 border border-red-200'
+                }`}
+              >
+                {recoveryMessage.type === 'success' ? (
+                  <CheckCircle2 size={16} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                ) : null}
+                <span>{recoveryMessage.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordRecovery} className="flex flex-col gap-4">
+              <div>
+                <label className="block text-gray-700 text-xs font-semibold mb-1.5">
+                  Correo electrónico o celular registrado
+                </label>
+                <div className="relative">
+                  <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={recoveryEmail}
+                    onChange={(e) => setRecoveryEmail(e.target.value)}
+                    placeholder="correo@ubi.edu.bo o 70000000"
+                    required
+                    className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-xs focus:outline-none focus:border-[#0A2463] focus:ring-2 focus:ring-[#0A2463]/10"
+                  />
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  Recibirás un enlace mágico para restablecer tu clave de forma segura.
+                </p>
+              </div>
+
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(false)}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={recoveryLoading}
+                  className="flex-1 bg-[#0A2463] hover:bg-[#1E4DB7] text-white font-bold py-3 rounded-xl text-xs transition-colors shadow-md disabled:opacity-70 flex items-center justify-center gap-2"
+                >
+                  {recoveryLoading && <Loader2 size={14} className="animate-spin" />}
+                  Enviar enlace
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

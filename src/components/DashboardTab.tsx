@@ -17,6 +17,8 @@ import {
   Square,
   Layers,
   FileCheck,
+  Key,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
@@ -60,6 +62,13 @@ export default function DashboardTab({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
+  // Estados para el cambio de contraseña
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passLoading, setPassLoading] = useState(false);
+  const [passMessage, setPassMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!alumno?.id) {
       console.log('Esperando información del alumno en el contexto...');
@@ -70,7 +79,7 @@ export default function DashboardTab({
     console.log('Cargando datos para el alumno ID:', alumno.id);
 
     try {
-      // 1. Cargar todas las mensualidades del alumno (sin filtrar por estado para poder mostrar las pagadas)
+      // 1. Cargar todas las mensualidades del alumno
       const { data: mensData, error: mensError } = await supabase
         .from('alumnos_mensualidades')
         .select('*')
@@ -137,6 +146,44 @@ export default function DashboardTab({
     fetchData();
   }, [fetchData]);
 
+  // Función para manejar el cambio de contraseña en Supabase
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassMessage(null);
+
+    if (newPassword.length < 6) {
+      setPassMessage({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres.' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPassMessage({ type: 'error', text: 'Las contraseñas no coinciden.' });
+      return;
+    }
+
+    setPassLoading(true);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) throw error;
+
+      setPassMessage({ type: 'success', text: '¡Contraseña actualizada correctamente!' });
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setPassMessage(null);
+      }, 2000);
+    } catch (err: any) {
+      setPassMessage({ type: 'error', text: err.message || 'Error al actualizar la contraseña.' });
+    } finally {
+      setPassLoading(false);
+    }
+  };
+
   if (loading || !alumno) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-20 gap-3">
@@ -146,7 +193,6 @@ export default function DashboardTab({
     );
   }
 
-  // Deuda total solo considera las que están estrictamente pendientes y no tienen pago en proceso
   const totalDeuda = mensualidades
     .filter((m) => m.estado === 'PENDIENTE' && !pagosPorConfirmar.has(`mensualidad:${m.id}`))
     .reduce((s, m) => s + Number(m.monto_con_descuento || 0), 0);
@@ -202,12 +248,21 @@ export default function DashboardTab({
   return (
     <div className="flex flex-col gap-4 pb-4">
       {/* Credencial / Tarjeta del Estudiante */}
-      <div className="mx-4 mt-4 bg-gradient-to-br from-[#0A2463] to-[#1E4DB7] rounded-2xl p-5 shadow-lg">
+      <div className="mx-4 mt-4 bg-gradient-to-br from-[#0A2463] to-[#1E4DB7] rounded-2xl p-5 shadow-lg relative">
+        {/* Botón para abrir el modal de cambio de clave con icono de llave */}
+        <button
+          onClick={() => setShowPasswordModal(true)}
+          title="Cambiar contraseña"
+          className="absolute top-4 right-4 bg-white/15 hover:bg-white/25 text-white p-2 rounded-full transition-colors flex items-center justify-center backdrop-blur-sm"
+        >
+          <Key size={18} />
+        </button>
+
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 border-2 border-white/30">
             <User size={26} className="text-white" />
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 pr-8">
             <p className="text-white/70 text-xs font-medium uppercase tracking-wide">Estudiante</p>
             <h2 className="text-white font-bold text-base leading-tight mt-0.5">{fullName}</h2>
             {carreraName && <p className="text-blue-200 text-xs mt-1">{carreraName}</p>}
@@ -381,7 +436,6 @@ export default function DashboardTab({
                         </div>
                       </div>
 
-                      {/* Botón de acción adaptado al estado */}
                       {!isPaid && (
                         <button
                           onClick={() => onPayMensualidad(debt.id)}
@@ -500,6 +554,96 @@ export default function DashboardTab({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Cambiar Contraseña */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl relative animate-in fade-in zoom-in duration-200">
+            <button
+              onClick={() => {
+                setShowPasswordModal(false);
+                setPassMessage(null);
+                setNewPassword('');
+                setConfirmPassword('');
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-[#0A2463]">
+                <Key size={20} />
+              </div>
+              <div>
+                <h3 className="text-[#0A2463] font-bold text-base">Cambiar contraseña</h3>
+                <p className="text-gray-400 text-xs">Actualiza tu clave de acceso al sistema</p>
+              </div>
+            </div>
+
+            {passMessage && (
+              <div
+                className={`mb-4 p-3 rounded-xl text-xs font-medium ${
+                  passMessage.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-red-50 text-red-600 border border-red-200'
+                }`}
+              >
+                {passMessage.text}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdatePassword} className="flex flex-col gap-3">
+              <div>
+                <label className="block text-gray-700 text-xs font-semibold mb-1">Nueva contraseña</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#0A2463]/30"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 text-xs font-semibold mb-1">Confirmar nueva contraseña</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repite la contraseña"
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#0A2463]/30"
+                />
+              </div>
+
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setPassMessage(null);
+                    setNewPassword('');
+                    setConfirmPassword('');
+                  }}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 rounded-xl text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={passLoading}
+                  className="flex-1 bg-[#0A2463] hover:bg-[#1E4DB7] text-white font-bold py-2.5 rounded-xl text-xs transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center gap-2"
+                >
+                  {passLoading && <Loader2 size={14} className="animate-spin" />}
+                  Actualizar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
