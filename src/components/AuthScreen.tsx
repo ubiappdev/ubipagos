@@ -1,18 +1,19 @@
 import { useState } from 'react';
-import { Mail, Phone, Lock, Eye, EyeOff, Loader2, KeyRound, X, CheckCircle2 } from 'lucide-react';
+import { Mail, Phone, Lock, Eye, EyeOff, Loader2, KeyRound, X, CheckCircle2, CreditCard } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
 export default function AuthScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn } = useAuth(); // Nota: ya no necesitamos 'signUp' del hook si usamos supabase directamente aquí
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [identifier, setIdentifier] = useState(''); // Puede ser correo o celular
   const [password, setPassword] = useState('');
+  const [ci, setCi] = useState(''); // Estado para la Cédula de Identidad requerida
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Estados para el modal de recuperación de contraseña (Magic Link / Reset)
+  // Estados para el modal de recuperación de contraseña
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryLoading, setRecoveryLoading] = useState(false);
@@ -28,12 +29,53 @@ export default function AuthScreen() {
 
     const loginIdentifier = isPhone ? `${identifier.trim()}@sms.ubi.edu.bo` : identifier.trim();
 
-    const { error: err } = mode === 'login'
-      ? await signIn(loginIdentifier, password)
-      : await signUp(loginIdentifier, password);
+    try {
+      if (mode === 'login') {
+        const { error: err } = await signIn(loginIdentifier, password);
+        if (err) throw new Error(typeof err === 'string' ? err : err.message || 'Error al iniciar sesión');
+      } else {
+        if (!ci.trim()) {
+          throw new Error('Por favor ingresa tu Cédula de Identidad (CI).');
+        }
 
-    if (err) setError(err);
-    setLoading(false);
+        // Opción 1: Llamada directa a supabase.auth.signUp pasando las opciones con el data
+        const { error: err } = await supabase.auth.signUp({
+          email: loginIdentifier,
+          password: password,
+          options: {
+            data: {
+              ci: ci.trim(),
+            }
+          }
+        });
+        
+        if (err) throw err;
+
+        alert('¡Cuenta creada con éxito! Ya puedes iniciar sesión.');
+        setMode('login');
+        setCi('');
+        setPassword('');
+      }
+    } catch (err: any) {
+      let errorMessage = 'Ocurrió un error en la autenticación.';
+      
+      if (err) {
+        if (typeof err === 'string') {
+          errorMessage = err;
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
+      }
+
+      // Limpiamos el prefijo genérico de Supabase si viene incluido
+      if (typeof errorMessage === 'string' && errorMessage.includes('Database error saving new user - ')) {
+        errorMessage = errorMessage.replace('Database error saving new user - ', '');
+      }
+
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Función para enviar el enlace de recuperación de contraseña con Supabase
@@ -47,7 +89,6 @@ export default function AuthScreen() {
       return;
     }
 
-    // Si ingresó teléfono, adaptarlo al dominio interno de SMS
     const isRecoveryPhone = /^[0-9+\s-]{7,15}$/.test(cleanInput);
     const targetEmail = isRecoveryPhone ? `${cleanInput}@sms.ubi.edu.bo` : cleanInput;
 
@@ -55,7 +96,7 @@ export default function AuthScreen() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
-        redirectTo: window.location.origin, // Redirige de vuelta a la app para cambiar la clave
+        redirectTo: window.location.origin,
       });
 
       if (error) throw error;
@@ -68,7 +109,7 @@ export default function AuthScreen() {
     } catch (err: any) {
       setRecoveryMessage({
         type: 'error',
-        text: err.message || 'No se pudo enviar el correo de recuperación. Verifica los datos.',
+        text: err?.message || 'No se pudo enviar el correo de recuperación. Verifica los datos.',
       });
     } finally {
       setRecoveryLoading(false);
@@ -93,7 +134,7 @@ export default function AuthScreen() {
       {/* Form section */}
       <div className="bg-white rounded-t-[2.5rem] px-6 pt-7 pb-8 flex-1 flex flex-col">
         <h2 className="text-[#0A2463] font-bold text-lg mb-1">
-          {mode === 'login' ? 'Iniciar Sesion' : 'Crear Cuenta'}
+          {mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
         </h2>
         <p className="text-gray-400 text-xs mb-5">
           {mode === 'login'
@@ -102,9 +143,29 @@ export default function AuthScreen() {
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Campo CI visible únicamente en modo registro */}
+          {mode === 'signup' && (
+            <div>
+              <label className="text-gray-600 text-xs font-semibold block mb-1.5">
+                Cédula de Identidad (CI)
+              </label>
+              <div className="relative">
+                <CreditCard size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={ci}
+                  onChange={(e) => setCi(e.target.value)}
+                  placeholder="Ej. 1234567"
+                  className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-[#0A2463] focus:ring-2 focus:ring-[#0A2463]/10 transition-all"
+                  required={mode === 'signup'}
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="text-gray-600 text-xs font-semibold block mb-1.5">
-              Correo Electronico o Celular
+              Correo Electrónico o Celular
             </label>
             <div className="relative">
               {isPhone ? (
@@ -125,13 +186,13 @@ export default function AuthScreen() {
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-gray-600 text-xs font-semibold">Contrasena</label>
+              <label className="text-gray-600 text-xs font-semibold">Contraseña</label>
               {mode === 'login' && (
                 <button
                   type="button"
                   onClick={() => {
                     setRecoveryMessage(null);
-                    setRecoveryEmail(identifier); // Pre-rellena si ya escribió algo
+                    setRecoveryEmail(identifier);
                     setShowForgotModal(true);
                   }}
                   className="text-xs text-[#0A2463] font-semibold hover:underline"
@@ -189,15 +250,12 @@ export default function AuthScreen() {
               : 'Ya tienes cuenta? Inicia sesion'}
           </button>
         </div>
-
-        <div className="mt-auto pt-5">
-         </div>
       </div>
 
-      {/* Modal para Recuperar Contraseña (Magic Link / Enlace de Restablecimiento) */}
+      {/* Modal para Recuperar Contraseña */}
       {showForgotModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative">
             <button
               onClick={() => setShowForgotModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
@@ -246,9 +304,6 @@ export default function AuthScreen() {
                     className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-xs focus:outline-none focus:border-[#0A2463] focus:ring-2 focus:ring-[#0A2463]/10"
                   />
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1.5">
-                  Recibirás un enlace mágico para restablecer tu clave de forma segura.
-                </p>
               </div>
 
               <div className="flex gap-2 mt-2">
