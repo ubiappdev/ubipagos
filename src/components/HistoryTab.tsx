@@ -15,6 +15,7 @@ import type { Pago } from '../lib/supabase';
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   APROBADO: { label: 'Aprobado', color: 'text-emerald-600', bg: 'bg-emerald-50', icon: CheckCircle2 },
+  CONCILIADO: { label: 'Pagado', color: 'text-emerald-600', bg: 'bg-emerald-50', icon: CheckCircle2 }, // Muestra "Pagado" para aranceles conciliados
   PENDIENTE: { label: 'Pendiente', color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock },
   RECHAZADO: { label: 'Rechazado', color: 'text-red-600', bg: 'bg-red-50', icon: XCircle },
 };
@@ -70,8 +71,10 @@ export default function HistoryTab() {
     return true;
   });
 
+  const isPagoCompletado = (estado?: string) => estado === 'APROBADO' || estado === 'CONCILIADO';
+
   const totalAprobado = pagos
-    .filter((p) => p.estado_conciliacion === 'APROBADO')
+    .filter((p) => isPagoCompletado(p.estado_conciliacion))
     .reduce((s, p) => s + Number(p.monto_pagado), 0);
 
   return (
@@ -87,7 +90,7 @@ export default function HistoryTab() {
           </div>
           <div className="flex-1">
             <p className="text-white/60 text-xs">Aprobadas</p>
-            <p className="text-emerald-400 font-bold text-lg">{pagos.filter((p) => p.estado_conciliacion === 'APROBADO').length}</p>
+            <p className="text-emerald-400 font-bold text-lg">{pagos.filter((p) => isPagoCompletado(p.estado_conciliacion)).length}</p>
           </div>
           <div className="flex-1">
             <p className="text-white/60 text-xs">Pendientes</p>
@@ -123,6 +126,8 @@ export default function HistoryTab() {
         {filtered.map((tx) => {
           const cfg = statusConfig[tx.estado_conciliacion] ?? statusConfig.PENDIENTE;
           const StatusIcon = cfg.icon;
+          const aprobadoOConciliado = isPagoCompletado(tx.estado_conciliacion);
+
           return (
             <div key={tx.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
               <div className={`w-11 h-11 rounded-xl ${cfg.bg} flex items-center justify-center flex-shrink-0`}>
@@ -145,7 +150,7 @@ export default function HistoryTab() {
                   {canalLabels[tx.canal_pago] ?? tx.canal_pago}
                 </span>
               </div>
-              {tx.estado_conciliacion === 'APROBADO' && (
+              {aprobadoOConciliado && (
                 <button
                   onClick={() => setReceiptPago(tx)}
                   className="flex-shrink-0 w-9 h-9 rounded-xl bg-blue-50 hover:bg-blue-100 flex items-center justify-center transition-colors active:scale-90"
@@ -216,7 +221,9 @@ export default function HistoryTab() {
                 </div>
                 <div className="flex justify-between py-1.5">
                   <span className="text-gray-400 text-xs">Estado:</span>
-                  <span className="text-emerald-600 text-xs font-bold">APROBADO</span>
+                  <span className="text-emerald-600 text-xs font-bold">
+                    {receiptPago.estado_conciliacion === 'CONCILIADO' ? 'Pagado' : 'APROBADO'}
+                  </span>
                 </div>
               </div>
 
@@ -260,7 +267,6 @@ export default function HistoryTab() {
               <button onClick={() => setReceiptPago(null)} className="flex-1 border border-gray-200 text-gray-500 font-semibold py-3 rounded-xl text-sm hover:bg-gray-50 transition-colors">
                 Cerrar
               </button>
-              
             </div>
           </div>
         </div>
