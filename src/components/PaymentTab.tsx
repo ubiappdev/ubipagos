@@ -396,9 +396,9 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
               <h3 className="text-[#0A2463] font-bold text-sm mb-4">Selecciona un Metodo de Pago</h3>
               <div className="flex flex-col gap-3">
                 {([
+                  { method: 'EFECTIVO' as Method, icon: Banknote, bg: 'bg-amber-50', color: 'text-amber-600', label: 'Pago en Efectivo', desc: 'Caja presencial en campus universitario' },
                   { method: 'QR' as Method, icon: QrCode, bg: 'bg-blue-50', color: 'text-[#0A2463]', label: 'Pago QR', desc: 'Escanea con tu app del banco' },
                   { method: 'DEPOSITO' as Method, icon: Building2, bg: 'bg-emerald-50', color: 'text-emerald-600', label: 'Deposito Bancario', desc: 'Transferencia a cuentas autorizadas' },
-                  { method: 'EFECTIVO' as Method, icon: Banknote, bg: 'bg-amber-50', color: 'text-amber-600', label: 'Pago en Efectivo', desc: 'Caja presencial en campus universitario' },
                   { method: 'TRANSFERENCIA' as Method, icon: Landmark, bg: 'bg-violet-50', color: 'text-violet-600', label: 'Transferencia Interbancaria', desc: 'Desde cualquier banco del pais' },
                 ]).map(({ method, icon: Icon, bg, color, label, desc }) => (
                   <button
@@ -427,8 +427,8 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
           </>
         )}
 
-        {/* STEP: QR */}
-        {step === 'qr' && (
+    {/* STEP: QR */}
+    {step === 'qr' && (
           <>
             <div className="bg-white rounded-2xl p-5 shadow-sm flex flex-col items-center">
               <div className="flex items-center gap-2 mb-4">
@@ -436,7 +436,9 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
                 <span className="text-[#0A2463] font-bold text-sm">Pago QR</span>
               </div>
               <p className="text-gray-500 text-xs mb-4 text-center">Escanea este codigo QR con tu app bancaria para transferir</p>
-              <div className="relative p-3 border-2 border-[#0A2463] rounded-2xl bg-white shadow-inner">
+              
+              {/* Contenedor de la imagen limpio, sin elementos encima */}
+              <div className="p-3 border-2 border-[#0A2463] rounded-2xl bg-white shadow-inner">
                 <img
                   src="https://ahjgfwpqugokzksfoufu.supabase.co/storage/v1/object/public/configuracion-pagos/qr_ubi.JPG"
                   alt="Codigo QR para realizar el pago"
@@ -444,6 +446,41 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
                   className="w-[200px] h-[200px] object-contain"
                 />
               </div>
+
+              {/* Botón de descarga ubicado AFUERA, debajo del QR */}
+              <button
+                onClick={async () => {
+                  try {
+                    const qrImgUrl = "https://ahjgfwpqugokzksfoufu.supabase.co/storage/v1/object/public/configuracion-pagos/qr_ubi.JPG";
+                    const response = await fetch(qrImgUrl);
+                    const blob = await response.blob();
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = 'Codigo_QR_UBI.jpg';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(blobUrl);
+                  } catch (error) {
+                    const link = document.createElement('a');
+                    link.href = "https://ahjgfwpqugokzksfoufu.supabase.co/storage/v1/object/public/configuracion-pagos/qr_ubi.JPG";
+                    link.download = 'Codigo_QR_UBI.jpg';
+                    link.setAttribute('download', 'Codigo_QR_UBI.jpg');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }
+                }}
+                className="mt-3 flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-[#0A2463] font-semibold text-xs px-4 py-2 rounded-xl transition-colors shadow-sm cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Descargar Código QR
+              </button>
+
               <div className="mt-5 w-full bg-gray-50 rounded-xl p-3 text-center">
                 <p className="text-gray-400 text-xs">Monto a transferir</p>
                 <p className="text-[#0A2463] font-extrabold text-2xl mt-1">Bs {item.amount.toLocaleString('es-BO')}</p>
@@ -460,7 +497,6 @@ export default function PaymentTab({ selectedItemId, selectedItemIds, selectedIt
             </button>
           </>
         )}
-
         {/* STEP: DEPOSITO */}
         {step === 'deposito' && (
           <>

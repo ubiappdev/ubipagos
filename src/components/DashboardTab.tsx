@@ -358,6 +358,9 @@ export default function DashboardTab({
                 else if (isOverdue) borderColor = 'border-red-500';
                 else if (isUrgent) borderColor = 'border-amber-400';
 
+                // Verificamos si es matrícula para ajustar el texto
+                const isMatricula = debt.mes_referencia?.toUpperCase().includes('MATRICULA') || debt.mes_referencia?.toUpperCase() === 'MATRÍCULA';
+
                 return (
                   <div
                     key={debt.id}
@@ -393,16 +396,21 @@ export default function DashboardTab({
                             ) : (
                               <Clock size={14} className="text-amber-500 flex-shrink-0" />
                             )}
-                            <p className="text-gray-800 font-semibold text-sm">
-                              Mensualidad {debt.mes_referencia} {debt.gestion_anio}
-                            </p>
+                            <div className="flex flex-col">
+                              <p className="text-gray-800 font-semibold text-sm">
+                                {isMatricula 
+                                  ? `MATRICULA ${debt.gestion_anio || ''}` 
+                                  : `Mensualidad ${debt.mes_referencia} ${debt.gestion_anio}`}
+                              </p>
+                              {!isMatricula && (
+                                <span className="text-xs text-ink-500 font-medium">
+                                  Nro. de Cuota: <strong className="text-navy-700">{debt.nro_cuota}</strong>
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-3 mt-1.5">
-                            {Number(debt.monto_original) !== Number(debt.monto_con_descuento) && (
-                              <span className="text-gray-400 line-through text-xs">
-                                Bs {Number(debt.monto_original).toLocaleString('es-BO')}
-                              </span>
-                            )}
+                      
                             <span className="text-[#0A2463] font-bold text-base">
                               Bs {Number(debt.monto_con_descuento).toLocaleString('es-BO')}
                             </span>
